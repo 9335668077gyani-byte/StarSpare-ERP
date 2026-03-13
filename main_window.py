@@ -14,8 +14,32 @@ class MainWindow(QMainWindow):
         self.user_role = user_role
         self.username = username
         self.setWindowTitle(f"SpareParts Pro v1.5 - {username} ({user_role})")
-        self.resize(1400, 900)
-        self.setMinimumSize(1100, 750) # Safe Zone
+        from PyQt6.QtWidgets import QApplication
+        
+        # Determine Screen Size for Responsive bounds
+        screen = QApplication.primaryScreen()
+        screen_geom = screen.availableGeometry() if screen else None
+        
+        if screen_geom:
+            w, h = screen_geom.width(), screen_geom.height()
+            
+            # If screen is small (e.g. 1366x768), adjust minimums so it fits
+            # The available geometry subtracts the Windows Taskbar for maximum fit
+            min_w = min(1100, int(w * 0.9))
+            min_h = min(750, int(h * 0.95))
+            
+            self.setMinimumSize(min_w, min_h)
+            
+            # Try to start maximized if resolution is low, otherwise 1400x900
+            if w <= 1400 or h <= 900:
+                self.setWindowState(Qt.WindowState.WindowMaximized)
+            else:
+                self.resize(1400, 900)
+        else:
+            # Fallback
+            self.resize(1400, 900)
+            self.setMinimumSize(1100, 750) # Safe Zone
+
         # FLASH FIX: Set background immediately in multiple ways
         self.setStyleSheet(f"background-color: {COLOR_BACKGROUND};")
         

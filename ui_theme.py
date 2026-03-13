@@ -75,6 +75,10 @@ def get_danger_button_style():
         }}
     """
 
+def get_secondary_button_style():
+    """Soft 3D Slate/Steel gradient for secondary actions (INFO, SYNC, EDIT)"""
+    return get_ghost_button_style()
+
 def get_ghost_button_style(icon_color="#ffffff"):
     """Premium Dark Grey/Blueish-Grey 3D gradient for Secondary actions (PDF, EXCEL, INFO)"""
     return f"""

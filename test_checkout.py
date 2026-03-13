@@ -8,7 +8,8 @@ pdf_generator = InvoiceGenerator(db)
 
 # Create accurate mock items with dictionaries instead of tuples
 pdf_items = [
-    [1, 'P001', 'Test Filter', 1.0, 'Rs. 359.00', 'Rs. 359.00', '8714', 18.0]
+    # idx, sys_id, name, HSN, GST%, Disc%, Qty, Rate, Total
+    [1, 'P001', 'Test Filter', '8714', 18.0, 0.0, 1.0, 359.00, 359.00]
 ]
 
 inv_meta = {

@@ -24,6 +24,7 @@ class DatabaseManager:
             self.create_tables()
             self.migrate_schema()
             self.create_indexes()  # Quick Win #1: Performance boost
+            self.seed_hsn_master() # Seed HSN data on init
             app_logger.info(f"Database initialized at {db_path}")
         except Exception as e:
             app_logger.critical(f"Database initialization failed: {e}")
@@ -89,13 +90,24 @@ class DatabaseManager:
                     conn.execute(f"ALTER TABLE parts ADD COLUMN {col} {dtype}")
                     app_logger.info(f"Migrated schema: Added {col} to parts table")
 
+            # Check for HSN and GST in parts (v2.1 Upgrade)
+            hsn_gst_cols = {
+                "hsn_code": "TEXT DEFAULT ''",
+                "gst_rate": "REAL DEFAULT 18.0"
+            }
+            for col, dtype in hsn_gst_cols.items():
+                if col not in parts_columns:
+                    conn.execute(f"ALTER TABLE parts ADD COLUMN {col} {dtype}")
+                    app_logger.info(f"Migrated schema: Added {col} to parts table")
+
             # Check for vehicle_model and reg_no in invoices
             cursor = conn.execute("PRAGMA table_info(invoices)")
             invoices_columns = [col[1] for col in cursor.fetchall()]
             
             inv_cols = {
                 "vehicle_model": "TEXT DEFAULT ''",
-                "reg_no": "TEXT DEFAULT ''"
+                "reg_no": "TEXT DEFAULT ''",
+                "customer_gstin": "TEXT DEFAULT ''"
             }
 
             for col, dtype in inv_cols.items():
@@ -175,6 +187,30 @@ class DatabaseManager:
             
             except Exception as e:
                 app_logger.error(f"Migration Error (vendors): {e}")
+
+            # Migration for hsn_master (v2.0 Hybrid Engine)
+            # If table exists but lacks 'pattern' column, drop and recreate
+            try:
+                cursor = conn.execute("PRAGMA table_info(hsn_master)")
+                hsn_cols = [col[1] for col in cursor.fetchall()]
+                if len(hsn_cols) > 0 and "pattern" not in hsn_cols:
+                    app_logger.warning("Old hsn_master detected. Recreating for v2.0...")
+                    conn.execute("DROP TABLE hsn_master")
+                    # Creation happens in create_tables which is called before migrate_schema
+                    # But since we drop it here, we should immediately recreate it or let it happen next boot
+                    # Actually, better to recreate it here to avoid errors on this boot
+                    conn.execute("""
+                        CREATE TABLE hsn_master (
+                            id INTEGER PRIMARY KEY AUTOINCREMENT,
+                            pattern TEXT UNIQUE,
+                            hsn_code TEXT,
+                            description TEXT,
+                            gst_rate REAL,
+                            rule_type TEXT
+                        )
+                    """)
+            except Exception as e:
+                app_logger.error(f"Migration Error (hsn_master): {e}")
                 
             conn.commit()
         except Exception as e:
@@ -214,7 +250,9 @@ class DatabaseManager:
                     compatibility TEXT,
                     category TEXT,
                     added_date TEXT,
-                    last_ordered_date TEXT
+                    last_ordered_date TEXT,
+                    hsn_code TEXT DEFAULT '',
+                    gst_rate REAL DEFAULT 18.0
                 )
             """)
 
@@ -229,7 +267,9 @@ class DatabaseManager:
                     total_amount REAL,
                     discount REAL DEFAULT 0,
                     date TEXT,
-                    json_items TEXT
+                    json_items TEXT,
+                    items_count INTEGER DEFAULT 0,
+                    customer_gstin TEXT DEFAULT ''
                 )
             """)
             
@@ -377,6 +417,18 @@ class DatabaseManager:
                     UNIQUE(vendor_name, part_name)
                 )
             """)
+
+            # HSN Master Rules Table (Hybrid Auto-Engine v2.0)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS hsn_master (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    pattern TEXT UNIQUE,
+                    hsn_code TEXT,
+                    description TEXT,
+                    gst_rate REAL,
+                    rule_type TEXT
+                )
+            """)
             
             # Vendor catalog column definitions storage
             cursor.execute("""
@@ -484,9 +536,111 @@ class DatabaseManager:
                 cursor.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)", (user, pwd, role))
 
             conn.commit()
+            app_logger.info("Database tables initialized.")
         except Exception as e:
             app_logger.error(f"Error creating tables: {e}")
-            raise
+            conn.rollback()
+        finally:
+            conn.close()
+
+    def get_hsn_rules(self):
+        """Get all HSN rules from hsn_master."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, pattern, hsn_code, description, gst_rate, rule_type FROM hsn_master ORDER BY id DESC")
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error fetching HSN rules: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def delete_hsn_rule(self, rule_id):
+        """Delete an HSN rule by ID."""
+        conn = self.get_connection()
+        try:
+            conn.execute("DELETE FROM hsn_master WHERE id = ?", (rule_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Error deleting HSN rule: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def seed_hsn_master(self):
+        """Seed the hsn_master table from built-in reference data."""
+        try:
+            from hsn_reference_data import HSN_REFERENCE_DB
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Only seed if table is relatively empty or just do "INSERT OR IGNORE"
+            for ref in HSN_REFERENCE_DB:
+                pattern = ref.get('description', '')
+                if not pattern: continue
+                
+                cursor.execute("""
+                    INSERT OR IGNORE INTO hsn_master (pattern, hsn_code, description, gst_rate, rule_type)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (pattern, ref['code'], pattern, ref['cgst'] + ref['sgst'], 'default'))
+            
+            conn.commit()
+            conn.close()
+            # app_logger.info("HSN Master table seeded successfully.")
+        except Exception as e:
+            app_logger.error(f"Error seeding HSN master: {e}")
+
+    def search_hsn_rule(self, search_term):
+        """Search for the best HSN/GST match for a given term."""
+        if not search_term: return None
+        
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            # 1. Exact match on pattern
+            cursor.execute("SELECT hsn_code, gst_rate FROM hsn_master WHERE pattern = ?", (search_term,))
+            result = cursor.fetchone()
+            if result: return {"hsn_code": result[0], "gst_rate": result[1]}
+            
+            # 2. Pattern match (LIKE)
+            cursor.execute("SELECT hsn_code, gst_rate FROM hsn_master WHERE pattern LIKE ? LIMIT 1", (f"%{search_term}%",))
+            result = cursor.fetchone()
+            if result: return {"hsn_code": result[0], "gst_rate": result[1]}
+            
+            # 3. Word-based fallback
+            words = [w for w in search_term.split() if len(w) > 3]
+            for word in words:
+                cursor.execute("SELECT hsn_code, gst_rate FROM hsn_master WHERE pattern LIKE ? LIMIT 1", (f"%{word}%",))
+                result = cursor.fetchone()
+                if result: return {"hsn_code": result[0], "gst_rate": result[1]}
+                
+            return None
+        except Exception as e:
+            app_logger.error(f"Error searching HSN rule: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def learn_hsn_rule(self, pattern, hsn_code, gst_rate):
+        """Learn or update a rule in the hsn_master."""
+        if not pattern or not hsn_code: return
+        
+        conn = self.get_connection()
+        try:
+            conn.execute("""
+                INSERT INTO hsn_master (pattern, hsn_code, description, gst_rate, rule_type)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(pattern) DO UPDATE SET
+                hsn_code = excluded.hsn_code,
+                gst_rate = excluded.gst_rate,
+                rule_type = 'learned'
+            """, (pattern, hsn_code, pattern, gst_rate, 'learned'))
+            conn.commit()
+        except Exception as e:
+            # app_logger.warning(f"Could not learn HSN rule for {pattern}: {e}")
+            pass
         finally:
             conn.close()
 
@@ -1226,7 +1380,7 @@ class DatabaseManager:
             # Select relevant columns
             cursor.execute("""
                 SELECT invoice_id, customer_name, mobile, vehicle_model, reg_no, 
-                       total_amount, discount, date, json_items 
+                       total_amount, discount, date, json_items, customer_gstin 
                 FROM invoices 
                 WHERE invoice_id = ?
             """, (invoice_id,))
@@ -1234,10 +1388,11 @@ class DatabaseManager:
             
             if not row: return None
             
-            # Parse Items
+            # Parse Items and Metadata from JSON
             json_str = row[8]
             items = []
             extra_details = {}
+            tax_details = []
             try:
                 parsed = json.loads(json_str)
                 if isinstance(parsed, list):
@@ -1245,21 +1400,13 @@ class DatabaseManager:
                 elif isinstance(parsed, dict):
                     items = parsed.get('cart', [])
                     extra_details = parsed.get('extra_details', {})
+                    tax_details = parsed.get('tax_details', [])
             except: pass
             
-            # Calculate Subtotal (Total + Discount)
             total = row[5]
             discount_val = row[6]
-            # In save_invoice: grand_total = sub_total - savings
-            # So sub_total = grand_total + savings? 
-            # Wait, billing_page saves 'discount' as amount? No, logic says:
-            # savings_amt = (sub * perc) / 100
-            # grand = sub - savings
-            # BUT database stores 'discount' column. In save_invoice:
-            # save_invoice((..., grand_total, discount_amount, ...))
-            # So sub_total = total + discount
-            sub_total = total + discount_val
             
+            # Map legacy or new metadata
             return {
                 'invoice_id': row[0],
                 'customer': row[1],
@@ -1267,11 +1414,15 @@ class DatabaseManager:
                 'vehicle': row[3],
                 'reg_no': row[4],
                 'total': total,
-                'discount': discount_val,
-                'sub_total': sub_total,
+                'total_savings': discount_val, # Unified savings
+                'original_mrp': total + discount_val,
+                'taxable_value': total - sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else total / 1.18,
+                'gst_included': sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else total - (total / 1.18),
                 'date': row[7],
                 'items': items,
-                'extra_details': extra_details
+                'tax_details': tax_details,
+                'extra_details': extra_details,
+                'customer_gstin': row[9] if len(row) > 9 else ""
             }
         except Exception as e:
             app_logger.error(f"Error fetching invoice details {invoice_id}: {e}")
@@ -1286,10 +1437,12 @@ class DatabaseManager:
             # Explicitly select columns to ensure order, including added_by and last_edited_date
             # 0:id, 1:name, 2:desc, 3:price, 4:qty, 5:rack, 6:col, 7:reorder, 
             # 8:vendor, 9:compat, 10:cat, 11:added_date, 12:last_ordered, 13:added_by, 14:last_edited_date
+            # 15:hsn_code, 16:gst_rate
             cursor.execute("""
                 SELECT part_id, part_name, description, unit_price, qty, 
                        rack_number, col_number, reorder_level, vendor_name, 
-                       compatibility, category, added_date, last_ordered_date, added_by, last_edited_date 
+                       compatibility, category, added_date, last_ordered_date, added_by, last_edited_date,
+                       hsn_code, gst_rate 
                 FROM parts
                 ORDER BY added_date DESC
             """)
@@ -1360,47 +1513,61 @@ class DatabaseManager:
                     added_date = dates[0] if dates[0] else added_date
                     last_ordered = dates[1] if dates[1] else ""
             
-            # Removed final_data (unused)
-            
             if existing and allow_update:
-                 # UPDATE
-                 if isinstance(part_data, dict):
-                      part_name = part_data['name']
-                      conn.execute("""
-                            UPDATE parts SET 
-                            part_name=?, description=?, unit_price=?, qty=?, 
-                            rack_number=?, col_number=?, reorder_level=?, vendor_name=?,
-                            compatibility=?, category=?, last_edited_date=?
-                            WHERE part_id=?
-                      """, (
-                            part_data['name'], part_data['desc'], part_data['price'], 
-                            part_data['qty'], part_data['rack'], part_data['col'], 
-                            part_data.get('reorder', 5), part_data.get('vendor', ''),
-                            part_data.get('compatibility', ''), part_data.get('category', ''),
-                            datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            part_id
-                      ))
-                 else:
-                      # Legacy Tuple
-                      part_name = part_data[1]
-                      conn.execute("""
-                            UPDATE parts SET 
-                            part_name=?, description=?, unit_price=?, qty=?, 
-                            rack_number=?, col_number=?, reorder_level=?, vendor_name=?,
-                            compatibility=?, category=?, last_edited_date=?
-                            WHERE part_id=?
-                      """, (
-                            part_data[1], part_data[2], part_data[3], part_data[4], 
-                            part_data[5], part_data[6], 
-                            part_data[7] if len(part_data)>7 else 5,
-                            part_data[8] if len(part_data)>8 else '',
-                            part_data[9] if len(part_data)>9 else '',
-                            part_data[10] if len(part_data)>10 else '',
-                            datetime.now().strftime("%Y-%m-%d %H:%M"),
-                            part_id
-                      ))
-                 msg = "Part updated successfully"
-                 is_dup = False
+                # UPDATE
+                if isinstance(part_data, dict):
+                    part_name = part_data['name']
+                    conn.execute("""
+                        UPDATE parts SET 
+                        part_name=?, description=?, unit_price=?, qty=?, 
+                        rack_number=?, col_number=?, reorder_level=?, vendor_name=?,
+                        compatibility=?, category=?, last_edited_date=?,
+                        hsn_code=?, gst_rate=?
+                        WHERE part_id=?
+                    """, (
+                        part_data['name'], part_data['desc'], part_data['price'], 
+                        part_data['qty'], part_data['rack'], part_data['col'], 
+                        part_data.get('reorder', 5), part_data.get('vendor', ''),
+                        part_data.get('compatibility', ''), part_data.get('category', ''),
+                        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        part_data.get('hsn_code', ''), part_data.get('gst_rate', 18.0),
+                        part_id
+                    ))
+                    # Learn rule from part name and category
+                    self.learn_hsn_rule(part_name, part_data.get('hsn_code', ''), part_data.get('gst_rate', 18.0))
+                    if part_data.get('category'):
+                        self.learn_hsn_rule(part_data.get('category'), part_data.get('hsn_code', ''), part_data.get('gst_rate', 18.0))
+                else:
+                    # Legacy Tuple
+                    part_name = part_data[1]
+                    conn.execute("""
+                        UPDATE parts SET 
+                        part_name=?, description=?, unit_price=?, qty=?, 
+                        rack_number=?, col_number=?, reorder_level=?, vendor_name=?,
+                        compatibility=?, category=?, last_edited_date=?,
+                        hsn_code=?, gst_rate=?
+                        WHERE part_id=?
+                    """, (
+                        part_data[1], part_data[2], part_data[3], part_data[4], 
+                        part_data[5], part_data[6], 
+                        part_data[7] if len(part_data)>7 else 5,
+                        part_data[8] if len(part_data)>8 else '',
+                        part_data[9] if len(part_data)>9 else '',
+                        part_data[10] if len(part_data)>10 else '',
+                        datetime.now().strftime("%Y-%m-%d %H:%M"),
+                        part_data[11] if len(part_data)>11 else '',
+                        part_data[12] if len(part_data)>12 else 18.0,
+                        part_id
+                    ))
+                    # Learn rule from updated tuple entry
+                    p_hsn = part_data[11] if len(part_data)>11 else ''
+                    p_gst = part_data[12] if len(part_data)>12 else 18.0
+                    p_cat = part_data[10] if len(part_data)>10 else ''
+                    self.learn_hsn_rule(part_name, p_hsn, p_gst)
+                    if p_cat:
+                        self.learn_hsn_rule(p_cat, p_hsn, p_gst)
+                msg = "Part updated successfully"
+                is_dup = False
             else:
                 # INSERT (Original Logic for New Parts)
                 if isinstance(part_data, dict):
@@ -1409,8 +1576,9 @@ class DatabaseManager:
                         INSERT INTO parts (
                             part_id, part_name, description, unit_price, qty, 
                             rack_number, col_number, reorder_level, vendor_name, 
-                            compatibility, category, added_date, added_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            compatibility, category, added_date, added_by,
+                            hsn_code, gst_rate
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
                         part_data['id'], part_data['name'], part_data['desc'], 
                         part_data['price'], part_data['qty'], part_data['rack'], 
@@ -1418,27 +1586,48 @@ class DatabaseManager:
                         part_data.get('vendor', ''), part_data.get('compatibility', ''),
                         part_data.get('category', ''),
                         added_date,
-                        added_by
+                        added_by,
+                        part_data.get('hsn_code', ''),
+                        part_data.get('gst_rate', 18.0)
                     ))
+                    # Learn rule from new part entry
+                    self.learn_hsn_rule(part_data['name'], part_data.get('hsn_code', ''), part_data.get('gst_rate', 18.0))
+                    if part_data.get('category'):
+                        self.learn_hsn_rule(part_data.get('category'), part_data.get('hsn_code', ''), part_data.get('gst_rate', 18.0))
                 else:
-                     # Legacy Tuple Path
-                     part_name = part_data[1]
-                     conn.execute("""
+                    # Legacy Tuple Path
+                    part_name = part_data[1]
+                    # Ensure 'data' is defined for tuple path
+                    data = list(part_data)
+                    while len(data) < 17: data.append("") # Extend to ensure indices are safe for hsn_code, gst_rate
+                    conn.execute("""
                         INSERT INTO parts (
                             part_id, part_name, description, unit_price, qty, 
                             rack_number, col_number, reorder_level, vendor_name, 
-                            compatibility, category, added_date, added_by
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            compatibility, category, added_date, added_by,
+                            hsn_code, gst_rate
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
-                        part_data[0], part_data[1], part_data[2], 
-                        part_data[3], part_data[4], part_data[5], 
-                        part_data[6], part_data[7] if len(part_data)>7 else 5, 
-                        part_data[8] if len(part_data)>8 else '',
-                        part_data[9] if len(part_data)>9 else '',
-                        part_data[10] if len(part_data)>10 else '',
+                        data[0], data[1], data[2], 
+                        data[3], data[4], data[5], 
+                        data[6], data[7] if len(data)>7 else 5, 
+                        data[8] if len(data)>8 else '',
+                        data[9] if len(data)>9 else '',
+                        data[10] if len(data)>10 else '',
                         added_date,
-                        added_by
+                        added_by,
+                        data[15] if len(data) > 15 else '',
+                        data[16] if len(data) > 16 else 18.0
                     ))
+                    # Learn rule from new tuple entry
+                    p_name = data[1]
+                    p_hsn = data[15] if len(data) > 15 else ''
+                    p_gst = data[16] if len(data) > 16 else 18.0
+                    p_cat = data[10] if len(data) > 10 else ''
+                    self.learn_hsn_rule(p_name, p_hsn, p_gst)
+                    if p_cat:
+                        self.learn_hsn_rule(p_cat, p_hsn, p_gst)
+                
                 msg = "Part added successfully"
                 is_dup = False
 
@@ -1450,6 +1639,7 @@ class DatabaseManager:
             return False, f"Database Error: {e}", False
         finally:
             conn.close()
+
 
     def update_last_ordered_dates(self, part_ids):
         conn = self.get_connection()
@@ -1545,12 +1735,16 @@ class DatabaseManager:
         # invoice_data: (invoice_id, customer_name, mobile, vehicle_model, reg_no, total_amount, discount, date, json_items, items_count)
         conn = self.get_connection()
         try:
-            # Migration/Backward Compat: If items_count missing, append 0
-            if len(invoice_data) == 9:
-                invoice_data = list(invoice_data)
-                invoice_data.append(0) 
+            # Migration/Backward Compat logic
+            invoice_data = list(invoice_data)
+            while len(invoice_data) < 11:
+                invoice_data.append("") # Fill missing with empty string
             
-            conn.execute("INSERT OR REPLACE INTO invoices (invoice_id, customer_name, mobile, vehicle_model, reg_no, total_amount, discount, date, json_items, items_count) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", invoice_data)
+            conn.execute("""
+                INSERT OR REPLACE INTO invoices 
+                (invoice_id, customer_name, mobile, vehicle_model, reg_no, total_amount, discount, date, json_items, items_count, customer_gstin) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, invoice_data)
             conn.commit()
             app_logger.info(f"Invoice saved: {invoice_data[0]}")
             return True, "Saved"
@@ -1992,7 +2186,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT customer_name, vehicle_model, reg_no 
+                SELECT customer_name, vehicle_model, reg_no, customer_gstin 
                 FROM invoices 
                 WHERE mobile = ? 
                 ORDER BY date DESC 

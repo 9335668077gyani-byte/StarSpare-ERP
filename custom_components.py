@@ -18,7 +18,7 @@ class TechCard(QFrame):
         self.glow_color = QColor(glow_color)
         self.title = title
         self.value_widget = value_widget
-        self.setFixedHeight(130) # Increased for sparkline
+        self.setMinimumHeight(100) # Increased for sparkline
         
         # Setup Layout
         self.layout = QVBoxLayout(self)
@@ -815,7 +815,7 @@ class LiveTerminal(QFrame):
     def __init__(self, ai_assistant=None, parent=None):
         super().__init__(parent)
         self.ai_assistant = ai_assistant
-        self.setFixedHeight(200)
+        self.setMinimumHeight(120)
         
         # Animation state for border glow
         self.glow_intensity = 0
@@ -1206,7 +1206,7 @@ class TopPerformerWidget(QFrame):
     """
     def __init__(self, title, icon_emoji="🏆", parent=None):
         super().__init__(parent)
-        self.setFixedWidth(280) 
+        self.setMinimumWidth(280) 
         self.setStyleSheet("""
             QFrame {
                 background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 rgba(5, 8, 15, 0.8), stop:1 rgba(2, 4, 8, 0.6));

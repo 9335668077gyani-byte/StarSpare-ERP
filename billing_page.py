@@ -9,7 +9,7 @@ from styles import (COLOR_SURFACE, COLOR_ACCENT_CYAN, COLOR_ACCENT_GREEN, COLOR_
                    STYLE_GLASS_PANEL, STYLE_LCD_DISPLAY, STYLE_DIGITAL_LABEL, STYLE_GLASS_SIDEBAR, STYLE_HEADER_ACCENT,
                    DIM_BUTTON_HEIGHT, DIM_INPUT_HEIGHT, DIM_MARGIN_STD, DIM_SPACING_STD, DIM_ICON_SIZE)
 from invoice_generator import InvoiceGenerator
-import datetime
+from datetime import datetime
 from whatsapp_helper import send_invoice_msg
 from custom_components import ProMessageBox, ProDialog, ProTableDelegate
 from logger import app_logger
@@ -150,6 +150,12 @@ class BillingPage(QWidget):
         self.in_reg_no.setFixedHeight(DIM_INPUT_HEIGHT)
         self.in_reg_no.setStyleSheet(ui_theme.get_lineedit_style())
         left_layout.addWidget(self.in_reg_no)
+
+        self.in_customer_gstin = QLineEdit()
+        self.in_customer_gstin.setPlaceholderText("Customer GSTIN (Optional)")
+        self.in_customer_gstin.setFixedHeight(DIM_INPUT_HEIGHT)
+        self.in_customer_gstin.setStyleSheet(ui_theme.get_lineedit_style())
+        left_layout.addWidget(self.in_customer_gstin)
         
         # Dynamic Fields Container
         self.dynamic_fields = [] # List of (field_name, input_widget, row_widget)
@@ -466,13 +472,25 @@ class BillingPage(QWidget):
                 found_item['db_stock'] = db_stock
                 self.refresh_cart()
         else:
+            hsn_code = part[16] if len(part) > 16 else 'N/A'
+            gst_rate = float(part[17]) if len(part) > 17 else 18.0
+            
+            # Hybrid HSN Engine Fallback (v2.1)
+            if not hsn_code or hsn_code == 'N/A':
+                rule = self.db_manager.search_hsn_rule(part[1])
+                if rule:
+                    hsn_code = rule['hsn_code']
+                    gst_rate = rule['gst_rate']
+
             self.cart_items.append({
                 'sys_id': part[0],
                 'name': part[1],
                 'price': part[3],
                 'db_stock': db_stock,
                 'qty': 1,
-                'total': part[3]
+                'total': part[3],
+                'hsn_code': hsn_code,
+                'gst_rate': gst_rate
             })
             # FLASH EFFECT for new item added! (Fast cyan flash for high-speed feedback)
             FlashEffect.flash(self.cart_table, "#00e5ff", 1)
@@ -685,50 +703,92 @@ class BillingPage(QWidget):
         ProMessageBox.information(self, "PART INTEL", info_msg)
 
     def calculate_totals(self):
-        sub_total = sum(item['total'] for item in self.cart_items)
+        """MRP-Based Hybrid Logic (v2.0): Reverse Tax Extraction."""
+        original_mrp_sum = 0.0      # Sum of raw MRPs (before any discounts)
+        total_savings = 0.0         # Unified savings (item-level + bill-wide)
+        grand_total = 0.0           # Strictly discounted MRP sum
+        total_gst = 0.0             # Extracted GST
         
-        # Calculate counters
-        parts_count = len(self.cart_items)  # Number of unique parts
-        items_count = sum(item['qty'] for item in self.cart_items)  # Total quantity
-        
+        # 1. Item-Level Processing
+        for item in self.cart_items:
+            qty = item.get('qty', 1)
+            raw_mrp = item.get('base_price', item['price'])
+            item_mrp_total = raw_mrp * qty
+            original_mrp_sum += item_mrp_total
+            
+            # Item discount has already been applied to item['price'] in apply_item_discount
+            # Use item['total'] which is qty * item['price']
+            grand_total += item['total']
+            
+            # Savings from item-level discount
+            item_savings = item_mrp_total - item['total']
+            total_savings += item_savings
+
+        # 2. Bill-Wide Processing
         try:
             txt = self.in_discount_pct.text().strip()
-            # Input is PERCENTAGE ONLY
-            perc = float(txt) if txt else 0.0
-            if perc > 100: perc = 100
+            bill_perc = float(txt) if txt else 0.0
+            if bill_perc > 100: bill_perc = 100
         except ValueError:
-            perc = 0.0
+            bill_perc = 0.0
             
-        savings_amt = (sub_total * perc) / 100
-        grand_total = sub_total - savings_amt
+        if bill_perc > 0:
+            bill_savings = (grand_total * bill_perc) / 100
+            total_savings += bill_savings
+            grand_total -= bill_savings
+
         if grand_total < 0: grand_total = 0
+
+        # 3. Reverse Tax Extraction (on final discounted cart)
+        # We need to extract GST per item because items can have different rates
+        self.tax_details = [] # Store for PDF
         
-        # --- ANIMATED UPDATES with PULSE EFFECTS ---
+        for item in self.cart_items:
+            # Re-calculate final price for THIS item after bill-wide discount
+            final_item_price = item['total'] * (1 - bill_perc/100)
+            
+            # Retrieve specific GST rate
+            # In add_to_cart, we should ideally fetch the latest HSN/GST
+            try:
+                gst_rate = float(item.get('gst_rate', 18.0))
+            except (ValueError, TypeError):
+                gst_rate = 18.0
+                
+            hsn = item.get('hsn_code', 'N/A')
+            
+            base_amt = final_item_price / (1 + (gst_rate / 100))
+            gst_amt = final_item_price - base_amt
+            total_gst += gst_amt
+            
+            self.tax_details.append({
+                'id': item['sys_id'],
+                'hsn': hsn,
+                'gst_rate': gst_rate,
+                'final_selling_price': final_item_price,
+                'taxable_base': base_amt,
+                'gst_amt': gst_amt
+            })
+
+        taxable_base_value = grand_total - total_gst
+
+        # --- ANIMATED UPDATES ---
+        parts_count = len(self.cart_items)
+        items_count = sum(item['qty'] for item in self.cart_items)
         
-        # Check if values changed for pulse effects
         try:
             old_parts = int(float(self.lbl_parts_count.text())) if self.lbl_parts_count.text() else 0
             old_items = int(float(self.lbl_items_count.text())) if self.lbl_items_count.text() else 0
-        except Exception as e:
-            app_logger.warning(f"Could not read current counter values: {e}")
-            old_parts = 0
-            old_items = 0
+        except:
+            old_parts = old_items = 0
         
-        # Update counters with lightweight animation
-        if parts_count != old_parts:
-            self.lbl_parts_count.animateTo(parts_count)
+        if parts_count != old_parts: self.lbl_parts_count.animateTo(parts_count)
+        if items_count != old_items: self.lbl_items_count.animateTo(items_count)
         
-        if items_count != old_items:
-            self.lbl_items_count.animateTo(items_count)
-        
-        # Animate financial values
-        self.lbl_subtotal.animateTo(sub_total)
-        self.lbl_savings.animateTo(savings_amt)
-        
-        # Update Grand Total with special effect
+        self.lbl_subtotal.animateTo(original_mrp_sum)
+        self.lbl_savings.animateTo(total_savings)
         self.lbl_grand_total.setText(f"₹ {grand_total:.2f}")
-        
-        return sub_total, savings_amt, grand_total
+
+        return original_mrp_sum, total_savings, taxable_base_value, total_gst, grand_total
 
     def check_customer_history(self):
         mobile = self.in_mobile.text().strip()
@@ -738,10 +798,11 @@ class BillingPage(QWidget):
                 # If db returns only 3, we adapt.
                 history = self.db_manager.get_customer_history(mobile)
                 if history:
-                    # Name, Model, Reg
                     self.in_cust_name.setText(history[0])
                     self.in_vehicle.setText(history[1])
                     self.in_reg_no.setText(history[2] if history[2] else "")
+                    if len(history) > 3:
+                        self.in_customer_gstin.setText(history[3] if history[3] else "")
                     
                     # HUD Update
                     if len(history) >= 5:
@@ -756,7 +817,7 @@ class BillingPage(QWidget):
                     
                     # Visual Cue: Neon Glow
                     from PyQt6.QtWidgets import QGraphicsDropShadowEffect
-                    for widget in [self.in_cust_name, self.in_vehicle, self.in_reg_no]:
+                    for widget in [self.in_cust_name, self.in_vehicle, self.in_reg_no, self.in_customer_gstin]:
                         glow = QGraphicsDropShadowEffect()
                         glow.setBlurRadius(20)
                         glow.setColor(QColor("#00e5ff"))
@@ -874,7 +935,7 @@ class BillingPage(QWidget):
     def generate_invoice(self, silent=False):
         if not self.cart_items: return None, None, None
         
-        sub_total, discount, grand_total = self.calculate_totals()
+        original_mrp_sum, total_savings, taxable_base_value, total_gst, grand_total = self.calculate_totals()
         
         cust_name = self.in_cust_name.text() or "Walk-in"
         mobile = self.in_mobile.text() or ""
@@ -882,11 +943,10 @@ class BillingPage(QWidget):
         reg_no = self.in_reg_no.text()
         
         inv_id = self.db_manager.get_next_invoice_id()
-        date_str = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+        date_str = datetime.now().strftime("%Y-%m-%d %H:%M")
         
         # Collect Dynamic Fields
         extra_details = {}
-        # field tuple is now (name, input, row_widget)
         for fname, finput, _ in self.dynamic_fields:
              val = finput.text().strip()
              if val:
@@ -894,32 +954,55 @@ class BillingPage(QWidget):
         
         final_json = {
             "cart": self.cart_items,
+            "tax_details": self.tax_details, # Added per-item breakdown
             "vehicle": vehicle,
             "reg_no": reg_no,
             "extra_details": extra_details
         }
-        json_items_str = json.dumps(final_json)
+        json_items_str = json.dumps(final_json, default=str)
         
-        # Calculate items count (Task 20)
+        # Save to DB
         items_count = sum(item['qty'] for item in self.cart_items)
-        
-        # Pass items_count to save_invoice
-        success, msg = self.db_manager.save_invoice((inv_id, cust_name, mobile, vehicle, reg_no, grand_total, discount, date_str, json_items_str, items_count))
+        customer_gstin = self.in_customer_gstin.text().strip()
+        inv_data = (inv_id, cust_name, mobile, vehicle, reg_no, grand_total, total_savings, date_str, json_items_str, items_count, customer_gstin)
+        success, msg = self.db_manager.save_invoice(inv_data)
         
         if success:
             app_logger.info(f"Invoice generated: {inv_id} for {cust_name}")
             for item in self.cart_items:
                 self.db_manager.sell_part(item['sys_id'], item['qty'], inv_id, cust_name, price_override=item['price'])
             
+            # Pre-calculate bill-wide discount percentage for item-level effective discount
+            try:
+                txt = self.in_discount_pct.text().strip()
+                bill_perc = float(txt) if txt else 0.0
+            except:
+                bill_perc = 0.0
+
             pdf_items = []
             for idx, i in enumerate(self.cart_items, 1):
+                # Retrieve tax info for this item from cached tax_details
+                tax_info = next((t for t in self.tax_details if t['id'] == i['sys_id']), {})
+                
+                # Calculate Effective Discount %
+                raw_mrp = i.get('base_price', i['price'])
+                final_item_total = i['total'] * (1 - bill_perc/100)
+                final_item_price = final_item_total / i['qty'] if i['qty'] > 0 else 0
+                
+                effective_disc = 0.0
+                if raw_mrp > 0:
+                    effective_disc = (1 - (final_item_price / raw_mrp)) * 100
+                
                 pdf_items.append([
                     idx, 
                     i['sys_id'], 
                     i['name'], 
+                    tax_info.get('hsn', 'N/A'),
+                    tax_info.get('gst_rate', i.get('gst_rate', 18.0)),
+                    effective_disc,
                     i['qty'], 
-                    f"Rs. {i['price']:.2f}", 
-                    f"Rs. {i['total']:.2f}"
+                    raw_mrp,
+                    final_item_total
                 ])
             
             inv_meta = {
@@ -929,10 +1012,13 @@ class BillingPage(QWidget):
                 "mobile": mobile,
                 "vehicle": vehicle,
                 "reg_no": reg_no,
-                "sub_total": sub_total,
-                "discount": discount,
+                "original_mrp": original_mrp_sum,
+                "total_savings": total_savings,
+                "taxable_value": taxable_base_value,
+                "gst_included": total_gst,
                 "total": grand_total,
-                "extra_details": extra_details
+                "extra_details": extra_details,
+                "customer_gstin": customer_gstin
             }
                 
             try:
@@ -965,6 +1051,7 @@ class BillingPage(QWidget):
         self.in_mobile.clear()
         self.in_vehicle.clear()
         self.in_reg_no.clear()
+        self.in_customer_gstin.clear()
         self.in_discount_pct.setText("0")
         self.lbl_savings.setText("0.00")
         self.lbl_grand_total.setText("₹ 0.00")

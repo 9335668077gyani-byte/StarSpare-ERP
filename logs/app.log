@@ -17309,3 +17309,749 @@ NameError: name 'BladeDelegate' is not defined
 2026-03-13 11:02:55,437 - SpareERP - INFO - Database initialized at test_repro.db
 2026-03-13 11:02:55,445 - SpareERP - INFO - Part saved: TEST001 - Test Part
 2026-03-13 11:02:55,453 - SpareERP - INFO - Part sold: TEST001, Qty: 1, Inv: INV-REPRO
+2026-03-13 12:40:50,202 - SpareERP - INFO - Application starting...
+2026-03-13 12:40:56,692 - SpareERP - INFO - Database tables initialized.
+2026-03-13 12:40:56,705 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 12:40:56,706 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 12:40:56,723 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 12:41:00,336 - SpareERP - INFO - Launching Login Window...
+2026-03-13 12:41:00,342 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 12:41:00,344 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 12:41:00,375 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 12:41:00,472 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 12:41:01,232 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 12:43:10,349 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 12:44:08,266 - SpareERP - INFO - Generated new Invoice ID: INV-1012
+2026-03-13 12:44:08,274 - SpareERP - INFO - Invoice saved: INV-1012
+2026-03-13 12:44:08,276 - SpareERP - INFO - Invoice generated: INV-1012 for Walk-in
+2026-03-13 12:44:08,283 - SpareERP - INFO - Part sold: N9114440, Qty: 1, Inv: INV-1012
+2026-03-13 12:44:08,290 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1012
+2026-03-13 13:43:44,198 - SpareERP - INFO - Application starting...
+2026-03-13 13:43:46,269 - SpareERP - INFO - Database tables initialized.
+2026-03-13 13:43:46,274 - SpareERP - INFO - Database tables initialized.
+2026-03-13 13:43:46,284 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 13:43:46,288 - SpareERP - ERROR - Error seeding HSN master: table hsn_master has no column named pattern
+2026-03-13 13:43:46,289 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 13:43:49,014 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 13:43:49,705 - SpareERP - INFO - Launching Login Window...
+2026-03-13 13:43:49,750 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 13:43:49,751 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 13:43:49,779 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 13:43:49,856 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 13:43:50,033 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 13:43:54,538 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:12:49,864 - SpareERP - INFO - Application starting...
+2026-03-13 14:12:51,802 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:12:51,809 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:12:51,818 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:12:51,823 - SpareERP - ERROR - Error seeding HSN master: table hsn_master has no column named pattern
+2026-03-13 14:12:51,823 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:12:54,671 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:12:55,257 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:12:55,263 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:12:55,263 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:12:55,280 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:12:55,348 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:12:55,496 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:13:02,269 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:13:05,118 - SpareERP - ERROR - Error adding to cart from search: unsupported operand type(s) for /: 'str' and 'int'
+2026-03-13 14:16:08,248 - SpareERP - INFO - Application starting...
+2026-03-13 14:16:10,204 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:16:10,209 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:16:10,215 - SpareERP - WARNING - Old hsn_master detected. Recreating for v2.0...
+2026-03-13 14:16:10,226 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:16:10,237 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:16:13,077 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:16:13,683 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:16:13,688 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:16:13,689 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:16:13,706 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:16:13,778 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:16:13,952 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:16:16,150 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:17:50,647 - SpareERP - INFO - Application starting...
+2026-03-13 14:17:52,499 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:17:52,505 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:17:52,513 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:17:52,521 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:17:55,476 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:17:56,052 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:17:56,058 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:17:56,059 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:17:56,073 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:17:56,144 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:17:56,303 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:18:01,503 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:18:24,926 - SpareERP - INFO - Generated new Invoice ID: INV-1013
+2026-03-13 14:19:59,873 - SpareERP - INFO - Application starting...
+2026-03-13 14:20:01,721 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:20:01,725 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:20:01,734 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:20:01,742 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:20:04,744 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:20:05,290 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:20:05,297 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:20:05,299 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:20:05,316 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:20:05,391 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:20:05,552 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:20:07,582 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:20:25,437 - SpareERP - INFO - Generated new Invoice ID: INV-1014
+2026-03-13 14:20:25,445 - SpareERP - INFO - Invoice saved: INV-1014
+2026-03-13 14:20:25,447 - SpareERP - INFO - Invoice generated: INV-1014 for Walk-in
+2026-03-13 14:20:25,453 - SpareERP - INFO - Part sold: NF2231500DA, Qty: 1, Inv: INV-1014
+2026-03-13 14:20:25,460 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1014
+2026-03-13 14:20:26,561 - SpareERP - ERROR - PDF Generation Failed: 'sub_total'
+2026-03-13 14:21:32,382 - SpareERP - INFO - Application starting...
+2026-03-13 14:21:34,284 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:21:34,287 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:21:34,297 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:21:34,306 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:21:37,204 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:21:37,870 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:21:37,877 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:21:37,878 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:21:37,895 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:21:37,968 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:21:38,141 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:21:39,646 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:22:21,244 - SpareERP - INFO - Application starting...
+2026-03-13 14:22:23,125 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:22:23,132 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:22:23,142 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:22:23,151 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:22:26,115 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:22:26,784 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:22:26,789 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:22:26,791 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:22:26,808 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:22:26,883 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:22:27,074 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:22:29,258 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:23:04,730 - SpareERP - INFO - Generated new Invoice ID: INV-1015
+2026-03-13 14:23:04,742 - SpareERP - INFO - Invoice saved: INV-1015
+2026-03-13 14:23:04,744 - SpareERP - INFO - Invoice generated: INV-1015 for Walk-in
+2026-03-13 14:23:04,750 - SpareERP - INFO - Part sold: P6040070, Qty: 1, Inv: INV-1015
+2026-03-13 14:23:04,757 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1015
+2026-03-13 14:25:33,752 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:27:47,264 - SpareERP - INFO - Application starting...
+2026-03-13 14:27:49,167 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:27:49,175 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:27:49,183 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:27:49,194 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:27:52,081 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:27:52,705 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:27:52,712 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:27:52,713 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:27:52,729 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:27:52,803 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:27:52,982 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:27:54,618 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:28:14,359 - SpareERP - INFO - Generated new Invoice ID: INV-1016
+2026-03-13 14:28:14,366 - SpareERP - INFO - Invoice saved: INV-1016
+2026-03-13 14:28:14,368 - SpareERP - INFO - Invoice generated: INV-1016 for gyani
+2026-03-13 14:28:14,374 - SpareERP - INFO - Part sold: N9325190, Qty: 1, Inv: INV-1016
+2026-03-13 14:28:14,381 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1016
+2026-03-13 14:28:31,710 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:29:23,222 - SpareERP - INFO - Application starting...
+2026-03-13 14:29:25,116 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:29:25,123 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:29:25,132 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:29:25,143 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:29:28,066 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:29:28,650 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:29:28,657 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:29:28,658 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:29:28,674 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:29:28,748 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:29:28,915 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:29:30,434 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:29:50,873 - SpareERP - INFO - Application starting...
+2026-03-13 14:29:52,736 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:29:52,743 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:29:52,751 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:29:52,761 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:29:55,725 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:29:56,323 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:29:56,330 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:29:56,331 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:29:56,346 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:29:56,418 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:29:56,601 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:29:57,878 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:32:29,115 - SpareERP - INFO - Application starting...
+2026-03-13 14:32:31,010 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:32:31,015 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:32:31,025 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:32:31,034 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:32:33,933 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:32:34,582 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:32:34,588 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:32:34,589 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:32:34,606 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:32:34,680 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:32:34,918 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:32:36,180 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:33:31,517 - SpareERP - INFO - Application starting...
+2026-03-13 14:33:33,444 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:33:33,447 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:33:33,457 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:33:33,468 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:33:36,365 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:33:37,030 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:33:37,036 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:33:37,037 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:33:37,055 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:33:37,126 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:33:37,311 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:33:38,865 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:36:40,863 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 14:37:03,818 - SpareERP - INFO - Generated new Invoice ID: INV-1017
+2026-03-13 14:37:03,825 - SpareERP - INFO - Invoice saved: INV-1017
+2026-03-13 14:37:03,828 - SpareERP - INFO - Invoice generated: INV-1017 for gyani
+2026-03-13 14:37:03,834 - SpareERP - INFO - Part sold: NF2256500D, Qty: 1, Inv: INV-1017
+2026-03-13 14:37:03,841 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1017
+2026-03-13 14:44:19,298 - SpareERP - INFO - Application starting...
+2026-03-13 14:44:21,419 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:44:21,428 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:44:21,440 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:44:21,448 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:44:24,113 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:44:24,748 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:44:24,754 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:44:24,755 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:44:24,771 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:44:24,839 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:44:24,998 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:44:49,631 - SpareERP - INFO - Application starting...
+2026-03-13 14:44:51,462 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:44:51,467 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:44:51,475 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:44:51,483 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:44:54,475 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:44:55,129 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:44:55,136 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:44:55,137 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:44:55,154 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:44:55,237 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:44:55,427 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:44:59,118 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:47:00,824 - SpareERP - INFO - Application starting...
+2026-03-13 14:47:02,663 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:47:02,670 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:47:02,678 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:47:02,688 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:47:05,677 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:47:06,254 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:47:06,260 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:47:06,261 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:47:06,276 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:47:06,348 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:47:06,510 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:48:13,307 - SpareERP - INFO - Application starting...
+2026-03-13 14:48:15,129 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:48:15,135 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:48:15,143 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:48:15,152 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:48:18,117 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:48:18,698 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:48:18,705 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:48:18,706 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:48:18,723 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:48:18,799 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:48:18,968 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:48:20,838 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:52:01,243 - SpareERP - INFO - Application starting...
+2026-03-13 14:52:03,089 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:52:03,096 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:52:03,105 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:52:03,113 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:52:06,115 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:52:06,676 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:52:06,683 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:52:06,684 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:52:06,699 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:52:06,773 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:52:06,940 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:52:08,257 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:52:36,431 - SpareERP - INFO - Application starting...
+2026-03-13 14:52:38,271 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:52:38,277 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:52:38,285 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:52:38,294 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:52:41,252 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:52:41,857 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:52:41,863 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:52:41,864 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:52:41,880 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:52:41,959 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:52:42,126 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:52:44,081 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:57:08,719 - SpareERP - INFO - Application starting...
+2026-03-13 14:57:10,646 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:57:10,653 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:57:10,663 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:57:10,673 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:57:13,531 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:57:14,149 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:57:14,156 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:57:14,157 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:57:14,172 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:57:14,243 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:57:14,415 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:57:15,700 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 14:58:21,542 - SpareERP - INFO - Application starting...
+2026-03-13 14:58:23,453 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:58:23,458 - SpareERP - INFO - Database tables initialized.
+2026-03-13 14:58:23,467 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 14:58:23,475 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 14:58:26,446 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 14:58:27,095 - SpareERP - INFO - Launching Login Window...
+2026-03-13 14:58:27,101 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 14:58:27,102 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 14:58:27,118 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 14:58:27,197 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 14:58:27,365 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 14:58:42,144 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:01:31,288 - SpareERP - INFO - Application starting...
+2026-03-13 15:01:33,125 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:01:33,131 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:01:33,140 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:01:33,148 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:01:36,147 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:01:36,735 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:01:36,742 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:01:36,743 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:01:36,760 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:01:36,836 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:01:37,001 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:01:38,289 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:02:22,862 - SpareERP - INFO - Application starting...
+2026-03-13 15:02:24,782 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:02:24,789 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:02:24,799 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:02:24,807 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:02:27,683 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:02:28,338 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:02:28,345 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:02:28,345 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:02:28,361 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:02:28,437 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:02:28,621 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:02:30,126 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:20:14,255 - SpareERP - INFO - Application starting...
+2026-03-13 15:20:16,219 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:20:16,225 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:20:16,234 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:20:16,244 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:20:19,072 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:20:19,877 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:20:19,885 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:20:19,886 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:20:19,902 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:20:19,976 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:20:20,153 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:20:23,789 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 15:20:35,574 - SpareERP - INFO - Generated new Invoice ID: INV-1018
+2026-03-13 15:20:35,585 - SpareERP - INFO - Invoice saved: INV-1018
+2026-03-13 15:20:35,587 - SpareERP - INFO - Invoice generated: INV-1018 for Walk-in
+2026-03-13 15:20:35,593 - SpareERP - INFO - Part sold: N3150220, Qty: 1, Inv: INV-1018
+2026-03-13 15:20:35,600 - SpareERP - INFO - Generating PDF with Theme: 'Green (Eco)' for Invoice: INV-1018
+2026-03-13 15:20:47,656 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:31:12,146 - SpareERP - INFO - Application starting...
+2026-03-13 15:31:13,977 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:31:13,980 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:31:13,988 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:31:13,996 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:31:16,958 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:31:17,541 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:31:17,548 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:31:17,549 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:31:17,565 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:31:17,639 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:31:17,800 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:31:44,333 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:36:10,021 - SpareERP - INFO - Application starting...
+2026-03-13 15:36:11,939 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:36:11,944 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:36:11,953 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:36:11,963 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:36:14,875 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:36:15,514 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:36:15,521 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:36:15,522 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:36:15,538 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:36:15,611 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:36:15,786 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:36:17,299 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:42:16,066 - SpareERP - INFO - Application starting...
+2026-03-13 15:42:18,020 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:42:18,025 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:42:18,034 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:42:18,043 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:42:20,891 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:42:21,500 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:42:21,507 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:42:21,508 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:42:21,525 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:42:21,607 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:42:21,792 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:42:22,876 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:47:38,305 - SpareERP - INFO - Application starting...
+2026-03-13 15:47:40,160 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:47:40,166 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:47:40,174 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:47:40,184 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:47:43,118 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:47:43,700 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:47:43,708 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:47:43,708 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:47:43,723 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:47:43,794 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:47:43,964 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:47:45,431 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 15:48:03,887 - SpareERP - INFO - Application starting...
+2026-03-13 15:48:05,744 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:48:05,749 - SpareERP - INFO - Database tables initialized.
+2026-03-13 15:48:05,758 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 15:48:05,767 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 15:48:08,754 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 15:48:09,387 - SpareERP - INFO - Launching Login Window...
+2026-03-13 15:48:09,394 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 15:48:09,395 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 15:48:09,410 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 15:48:09,490 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 15:48:09,734 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 15:48:11,099 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 16:00:08,595 - SpareERP - INFO - Application starting...
+2026-03-13 16:00:10,411 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:00:10,418 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:00:10,427 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:00:10,436 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:00:13,414 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:00:13,968 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:00:13,978 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:00:13,979 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:00:13,994 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:00:14,068 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:00:14,240 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:00:15,662 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 16:08:30,046 - SpareERP - INFO - Application starting...
+2026-03-13 16:08:32,051 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:08:32,055 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:08:32,065 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:08:32,074 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:08:34,887 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:08:35,459 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:08:35,468 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:08:35,469 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:08:35,484 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:08:35,557 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:08:35,716 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:10:50,264 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 16:24:03,311 - SpareERP - INFO - Application starting...
+2026-03-13 16:24:09,140 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:24:09,146 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:24:09,159 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:24:09,171 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:24:09,190 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:24:16,860 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:24:16,873 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:24:16,874 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:24:16,890 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:24:16,981 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:24:17,575 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:24:24,790 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 16:33:05,678 - SpareERP - INFO - Application starting...
+2026-03-13 16:33:07,519 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:33:07,524 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:33:07,533 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:33:07,542 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:33:10,535 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:33:11,096 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:33:11,108 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:33:11,109 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:33:11,128 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:33:11,205 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:33:11,367 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:33:25,680 - SpareERP - INFO - Lazy loading page: Inventory
+2026-03-13 16:33:26,136 - SpareERP - INFO - Initializing InventoryPage...
+2026-03-13 16:33:26,176 - SpareERP - INFO - InventoryPage Initialized Successfully.
+2026-03-13 16:33:27,857 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 16:33:36,594 - SpareERP - INFO - Setting updated: shop_name
+2026-03-13 16:33:36,600 - SpareERP - INFO - Setting updated: shop_mobile
+2026-03-13 16:33:36,608 - SpareERP - INFO - Setting updated: shop_gstin
+2026-03-13 16:33:36,615 - SpareERP - INFO - Setting updated: shop_address
+2026-03-13 16:33:36,624 - SpareERP - INFO - Setting updated: logo_path
+2026-03-13 16:33:36,631 - SpareERP - INFO - Setting updated: invoice_theme
+2026-03-13 16:33:36,640 - SpareERP - INFO - Setting updated: invoice_format
+2026-03-13 16:33:36,649 - SpareERP - INFO - Setting updated: default_gst_rate
+2026-03-13 16:33:36,655 - SpareERP - INFO - Setting updated: gst_mode
+2026-03-13 16:33:36,664 - SpareERP - INFO - Setting updated: show_gst_breakdown
+2026-03-13 16:33:36,671 - SpareERP - INFO - Setting updated: show_hsn_on_invoice
+2026-03-13 16:33:36,679 - SpareERP - INFO - Setting updated: invoice_footer_text
+2026-03-13 16:33:40,154 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 16:33:49,713 - SpareERP - INFO - Generated new Invoice ID: INV-1019
+2026-03-13 16:33:49,720 - SpareERP - INFO - Invoice saved: INV-1019
+2026-03-13 16:33:49,722 - SpareERP - INFO - Invoice generated: INV-1019 for Walk-in
+2026-03-13 16:33:49,729 - SpareERP - INFO - Part sold: N91151005D, Qty: 1, Inv: INV-1019
+2026-03-13 16:33:49,736 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1019
+2026-03-13 16:38:58,817 - SpareERP - INFO - Application starting...
+2026-03-13 16:39:00,667 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:39:00,671 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:39:00,682 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:39:00,691 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:39:03,658 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:39:04,223 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:39:04,233 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:39:04,234 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:39:04,250 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:39:04,326 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:39:04,496 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:39:08,278 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 16:42:01,671 - SpareERP - INFO - Application starting...
+2026-03-13 16:42:08,112 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:42:08,119 - SpareERP - INFO - Database tables initialized.
+2026-03-13 16:42:08,131 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 16:42:08,142 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 16:42:08,162 - SpareERP - INFO - Hardware ID: HWID-5DD9471598B4450D
+2026-03-13 16:42:16,038 - SpareERP - INFO - Launching Login Window...
+2026-03-13 16:42:16,045 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 16:42:16,048 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 16:42:16,084 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 16:42:16,199 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 16:42:17,045 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 16:42:21,875 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 16:42:55,618 - SpareERP - INFO - Generated new Invoice ID: INV-1020
+2026-03-13 16:42:55,632 - SpareERP - INFO - Invoice saved: INV-1020
+2026-03-13 16:42:55,634 - SpareERP - INFO - Invoice generated: INV-1020 for gyani
+2026-03-13 16:42:55,641 - SpareERP - INFO - Part sold: N5010470, Qty: 2, Inv: INV-1020
+2026-03-13 16:42:55,648 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1020
+2026-03-13 16:46:14,729 - SpareERP - INFO - Lazy loading page: Reports
+2026-03-13 17:03:39,936 - SpareERP - INFO - Database tables initialized.
+2026-03-13 17:03:39,941 - SpareERP - INFO - Database tables initialized.
+2026-03-13 17:03:39,950 - SpareERP - INFO - Migrated schema: Added customer_gstin to invoices table
+2026-03-13 17:03:39,957 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 17:03:39,966 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 17:04:22,260 - SpareERP - INFO - Database tables initialized.
+2026-03-13 17:04:22,265 - SpareERP - INFO - Database tables initialized.
+2026-03-13 17:04:22,274 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 17:04:22,283 - SpareERP - INFO - Database initialized at c:\Users\Admin\Desktop\spare_ERP\data\spareparts_pro.db
+2026-03-13 17:04:22,310 - SpareERP - INFO - Invoice saved: TEST-INV-1773401662
+2026-03-13 20:59:29,489 - SpareERP - INFO - Application starting...
+2026-03-13 20:59:36,793 - SpareERP - INFO - Database tables initialized.
+2026-03-13 20:59:36,974 - SpareERP - INFO - Database tables initialized.
+2026-03-13 20:59:37,095 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 20:59:37,163 - SpareERP - INFO - Database initialized at c:\Users\pc\Downloads\spare_ERP\data\spareparts_pro.db
+2026-03-13 20:59:37,206 - SpareERP - INFO - Hardware ID: HWID-9805919959594C33
+2026-03-13 20:59:40,595 - SpareERP - INFO - Launching Login Window...
+2026-03-13 20:59:40,609 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 20:59:40,611 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 20:59:40,629 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 20:59:40,710 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 20:59:41,429 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 20:59:48,984 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 21:00:13,916 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 21:00:32,937 - SpareERP - INFO - Generated new Invoice ID: INV-1021
+2026-03-13 21:00:32,952 - SpareERP - INFO - Invoice saved: INV-1021
+2026-03-13 21:00:32,959 - SpareERP - INFO - Invoice generated: INV-1021 for Walk-in
+2026-03-13 21:00:32,970 - SpareERP - INFO - Part sold: N9115250, Qty: 1, Inv: INV-1021
+2026-03-13 21:00:32,988 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1021
+2026-03-13 21:00:32,990 - SpareERP - ERROR - PDF Generation Failed: name 'pdf_items' is not defined
+2026-03-13 21:03:48,250 - SpareERP - INFO - Generated new Invoice ID: INV-1022
+2026-03-13 21:03:48,283 - SpareERP - INFO - Invoice saved: INV-1022
+2026-03-13 21:03:48,296 - SpareERP - INFO - Invoice generated: INV-1022 for Walk-in
+2026-03-13 21:03:48,327 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1022
+2026-03-13 21:03:48,329 - SpareERP - ERROR - PDF Generation Failed: name 'pdf_items' is not defined
+2026-03-13 21:04:02,130 - SpareERP - INFO - Generated new Invoice ID: INV-1023
+2026-03-13 21:04:02,164 - SpareERP - INFO - Invoice saved: INV-1023
+2026-03-13 21:04:02,176 - SpareERP - INFO - Invoice generated: INV-1023 for gyani
+2026-03-13 21:04:02,203 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1023
+2026-03-13 21:04:02,204 - SpareERP - ERROR - PDF Generation Failed: name 'pdf_items' is not defined
+2026-03-13 21:04:42,779 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:04:42,813 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:04:42,840 - SpareERP - INFO - Migrated schema: Added added_by to parts table
+2026-03-13 21:04:42,843 - SpareERP - INFO - Migrated schema: Added last_cost to parts table
+2026-03-13 21:04:42,847 - SpareERP - INFO - Migrated schema: Added last_edited_date to parts table
+2026-03-13 21:04:42,851 - SpareERP - INFO - Migrated schema: Added recovery_pin to users table
+2026-03-13 21:04:42,855 - SpareERP - INFO - Migrated schema: Added hardware_id to app_license table
+2026-03-13 21:04:42,858 - SpareERP - INFO - Migrated schema: Added ordered_price to po_items table
+2026-03-13 21:04:42,919 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:04:42,961 - SpareERP - INFO - Database initialized at spare_erp.db
+2026-03-13 21:05:45,080 - SpareERP - INFO - Generated new Invoice ID: INV-1024
+2026-03-13 21:05:45,105 - SpareERP - INFO - Invoice saved: INV-1024
+2026-03-13 21:05:45,116 - SpareERP - INFO - Invoice generated: INV-1024 for gyani
+2026-03-13 21:05:45,135 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1024
+2026-03-13 21:05:45,136 - SpareERP - ERROR - PDF Generation Failed: name 'pdf_items' is not defined
+2026-03-13 21:05:59,063 - SpareERP - INFO - Setting updated: shop_name
+2026-03-13 21:05:59,085 - SpareERP - INFO - Setting updated: shop_mobile
+2026-03-13 21:05:59,108 - SpareERP - INFO - Setting updated: shop_gstin
+2026-03-13 21:05:59,131 - SpareERP - INFO - Setting updated: shop_address
+2026-03-13 21:05:59,153 - SpareERP - INFO - Setting updated: logo_path
+2026-03-13 21:05:59,174 - SpareERP - INFO - Setting updated: invoice_theme
+2026-03-13 21:05:59,195 - SpareERP - INFO - Setting updated: invoice_format
+2026-03-13 21:05:59,216 - SpareERP - INFO - Setting updated: default_gst_rate
+2026-03-13 21:05:59,237 - SpareERP - INFO - Setting updated: gst_mode
+2026-03-13 21:05:59,259 - SpareERP - INFO - Setting updated: show_gst_breakdown
+2026-03-13 21:05:59,280 - SpareERP - INFO - Setting updated: show_hsn_on_invoice
+2026-03-13 21:05:59,299 - SpareERP - INFO - Setting updated: invoice_footer_text
+2026-03-13 21:11:41,984 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:11:41,993 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:11:42,013 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:11:42,042 - SpareERP - INFO - Database initialized at spare_erp.db
+2026-03-13 21:11:42,483 - SpareERP - INFO - AI Cache: 0 vehicle models, 0 part keywords
+2026-03-13 21:15:42,174 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:15:42,185 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:15:42,204 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:15:42,230 - SpareERP - INFO - Database initialized at spare_erp.db
+2026-03-13 21:15:42,412 - SpareERP - INFO - AI Cache: 0 vehicle models, 0 part keywords
+2026-03-13 21:16:07,672 - SpareERP - INFO - Application starting...
+2026-03-13 21:16:09,507 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:16:09,516 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:16:09,539 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:16:09,568 - SpareERP - INFO - Database initialized at c:\Users\pc\Downloads\spare_ERP\data\spareparts_pro.db
+2026-03-13 21:16:12,488 - SpareERP - INFO - Hardware ID: HWID-9805919959594C33
+2026-03-13 21:16:12,537 - SpareERP - INFO - Launching Login Window...
+2026-03-13 21:16:12,549 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 21:16:12,551 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 21:16:12,576 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 21:16:12,687 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 21:16:12,865 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 21:16:56,034 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 21:17:19,536 - SpareERP - INFO - Generated new Invoice ID: INV-1025
+2026-03-13 21:17:19,560 - SpareERP - INFO - Invoice saved: INV-1025
+2026-03-13 21:17:19,572 - SpareERP - INFO - Invoice generated: INV-1025 for Walk-in
+2026-03-13 21:17:19,585 - SpareERP - INFO - Part sold: N4030420, Qty: 1, Inv: INV-1025
+2026-03-13 21:17:19,607 - SpareERP - INFO - Generating PDF with Theme: 'Modern (Blue)' for Invoice: INV-1025
+2026-03-13 21:17:19,608 - SpareERP - ERROR - PDF Generation Failed: name 'pdf_items' is not defined
+2026-03-13 21:18:24,853 - SpareERP - INFO - Lazy loading page: Inventory
+2026-03-13 21:18:25,557 - SpareERP - INFO - Initializing InventoryPage...
+2026-03-13 21:18:25,589 - SpareERP - INFO - InventoryPage Initialized Successfully.
+2026-03-13 21:18:27,792 - SpareERP - INFO - Lazy loading page: Reports
+2026-03-13 21:18:42,104 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:18:42,113 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:18:42,137 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:18:42,167 - SpareERP - INFO - Database initialized at data\spareparts_pro.db
+2026-03-13 21:18:42,179 - SpareERP - INFO - Generating PDF with Theme: 'Modern (Blue)' for Invoice: TEST-1043
+2026-03-13 21:18:44,845 - SpareERP - INFO - Sales PDF saved: reports\Sales_Report_20260313_211844.pdf
+2026-03-13 21:19:28,292 - SpareERP - INFO - Lazy loading page: Expenses
+2026-03-13 21:19:28,316 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 21:19:28,323 - SpareERP - INFO - Query all expenses: 6 found
+2026-03-13 21:19:28,330 - SpareERP - INFO - Querying ALL expenses
+2026-03-13 21:19:28,330 - SpareERP - INFO - Found 6 expense entries
+2026-03-13 21:19:28,330 - SpareERP - INFO - Loading 6 expenses
+2026-03-13 21:19:30,790 - SpareERP - INFO - Lazy loading page: Orders
+2026-03-13 21:19:32,770 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:19:32,777 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:19:32,797 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:19:32,822 - SpareERP - INFO - Database initialized at data\spareparts_pro.db
+2026-03-13 21:19:32,832 - SpareERP - INFO - Generating PDF with Theme: 'Modern (Blue)' for Invoice: TEST-1043
+2026-03-13 21:20:21,288 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:20:21,297 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:20:21,319 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:20:21,348 - SpareERP - INFO - Database initialized at data\spareparts_pro.db
+2026-03-13 21:20:21,359 - SpareERP - INFO - Generating PDF with Theme: 'Modern (Blue)' for Invoice: TEST-1043
+2026-03-13 21:21:34,833 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 21:22:35,796 - SpareERP - INFO - Application starting...
+2026-03-13 21:22:37,614 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:22:37,623 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:22:37,648 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:22:37,678 - SpareERP - INFO - Database initialized at c:\Users\pc\Downloads\spare_ERP\data\spareparts_pro.db
+2026-03-13 21:22:40,614 - SpareERP - INFO - Hardware ID: HWID-9805919959594C33
+2026-03-13 21:22:40,662 - SpareERP - INFO - Launching Login Window...
+2026-03-13 21:22:40,673 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 21:22:40,674 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 21:22:40,698 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 21:22:40,779 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 21:22:40,903 - SpareERP - INFO - AI Cache: 221 vehicle models, 368 part keywords
+2026-03-13 21:23:01,435 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 21:23:34,642 - SpareERP - INFO - Generated new Invoice ID: INV-1026
+2026-03-13 21:23:34,666 - SpareERP - INFO - Invoice saved: INV-1026
+2026-03-13 21:23:34,678 - SpareERP - INFO - Invoice generated: INV-1026 for gyani
+2026-03-13 21:23:34,692 - SpareERP - INFO - Part sold: N9114490, Qty: 1, Inv: INV-1026
+2026-03-13 21:23:34,715 - SpareERP - INFO - Generating PDF with Theme: 'Modern (Blue)' for Invoice: INV-1026
+2026-03-13 21:24:03,248 - SpareERP - INFO - Lazy loading page: Settings
+2026-03-13 21:24:12,815 - SpareERP - INFO - Setting updated: shop_name
+2026-03-13 21:24:12,838 - SpareERP - INFO - Setting updated: shop_mobile
+2026-03-13 21:24:12,860 - SpareERP - INFO - Setting updated: shop_gstin
+2026-03-13 21:24:12,883 - SpareERP - INFO - Setting updated: shop_address
+2026-03-13 21:24:12,905 - SpareERP - INFO - Setting updated: logo_path
+2026-03-13 21:24:12,926 - SpareERP - INFO - Setting updated: invoice_theme
+2026-03-13 21:24:12,951 - SpareERP - INFO - Setting updated: invoice_format
+2026-03-13 21:24:12,973 - SpareERP - INFO - Setting updated: default_gst_rate
+2026-03-13 21:24:12,994 - SpareERP - INFO - Setting updated: gst_mode
+2026-03-13 21:24:13,018 - SpareERP - INFO - Setting updated: show_gst_breakdown
+2026-03-13 21:24:13,039 - SpareERP - INFO - Setting updated: show_hsn_on_invoice
+2026-03-13 21:24:13,061 - SpareERP - INFO - Setting updated: invoice_footer_text
+2026-03-13 21:26:22,874 - SpareERP - INFO - Lazy loading page: Inventory
+2026-03-13 21:26:23,089 - SpareERP - INFO - Initializing InventoryPage...
+2026-03-13 21:26:23,111 - SpareERP - INFO - InventoryPage Initialized Successfully.
+2026-03-13 21:26:47,282 - SpareERP - INFO - Inventory imported from C:/Users/pc/Downloads/parts2_inventory.csv, 605 records processed
+2026-03-13 21:26:52,439 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:53,227 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:53,485 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:53,697 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:56,049 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:56,311 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:56,521 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:26:56,728 - SpareERP - INFO - Refreshing page at index 2
+2026-03-13 21:28:14,600 - SpareERP - INFO - Generated new Invoice ID: INV-1027
+2026-03-13 21:28:14,625 - SpareERP - INFO - Invoice saved: INV-1027
+2026-03-13 21:28:14,637 - SpareERP - INFO - Invoice generated: INV-1027 for gyani
+2026-03-13 21:28:14,650 - SpareERP - INFO - Part sold: TR600080, Qty: 1, Inv: INV-1027
+2026-03-13 21:28:14,675 - SpareERP - INFO - Part sold: N9114490, Qty: 1, Inv: INV-1027
+2026-03-13 21:28:14,698 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1027
+2026-03-13 21:29:34,168 - SpareERP - INFO - Lazy loading page: Reports
+2026-03-13 21:29:39,878 - SpareERP - INFO - Lazy loading page: Expenses
+2026-03-13 21:29:39,892 - SpareERP - INFO - AI Cache: 222 vehicle models, 365 part keywords
+2026-03-13 21:29:39,900 - SpareERP - INFO - Query all expenses: 6 found
+2026-03-13 21:29:39,907 - SpareERP - INFO - Querying ALL expenses
+2026-03-13 21:29:39,908 - SpareERP - INFO - Found 6 expense entries
+2026-03-13 21:29:39,908 - SpareERP - INFO - Loading 6 expenses
+2026-03-13 21:29:48,351 - SpareERP - INFO - Lazy loading page: Orders
+2026-03-13 21:29:59,609 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,619 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,619 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,619 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,620 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,620 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,620 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,620 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,630 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,630 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,630 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,630 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,641 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,641 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,653 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,653 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,663 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:29:59,663 - SpareERP - WARNING - Multi PO PDF row error: tuple index out of range
+2026-03-13 21:31:51,714 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:31:51,723 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:31:51,740 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:31:51,763 - SpareERP - INFO - Database initialized at data\spareparts_pro.db
+2026-03-13 21:31:51,773 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: TEST-1043
+2026-03-13 21:33:17,084 - SpareERP - INFO - Application starting...
+2026-03-13 21:33:18,853 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:33:18,863 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:33:18,889 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:33:18,915 - SpareERP - INFO - Database initialized at c:\Users\pc\Downloads\spare_ERP\data\spareparts_pro.db
+2026-03-13 21:33:21,889 - SpareERP - INFO - Hardware ID: HWID-9805919959594C33
+2026-03-13 21:33:21,945 - SpareERP - INFO - Launching Login Window...
+2026-03-13 21:33:21,959 - SpareERP - INFO - User authenticated as ADMIN. Launching Main Window.
+2026-03-13 21:33:21,960 - SpareERP - INFO - Initializing MainWindow...
+2026-03-13 21:33:21,983 - SpareERP - INFO - Keyboard shortcuts configured successfully.
+2026-03-13 21:33:22,059 - SpareERP - INFO - Lazy loading page: Dashboard
+2026-03-13 21:33:22,225 - SpareERP - INFO - AI Cache: 222 vehicle models, 365 part keywords
+2026-03-13 21:33:25,371 - SpareERP - INFO - Lazy loading page: Billing
+2026-03-13 21:33:57,528 - SpareERP - INFO - Generated new Invoice ID: INV-1028
+2026-03-13 21:33:57,553 - SpareERP - INFO - Invoice saved: INV-1028
+2026-03-13 21:33:57,563 - SpareERP - INFO - Invoice generated: INV-1028 for gyani
+2026-03-13 21:33:57,576 - SpareERP - INFO - Part sold: N4031120, Qty: 1, Inv: INV-1028
+2026-03-13 21:33:57,599 - SpareERP - INFO - Generating PDF with Theme: 'Saffron (Indian)' for Invoice: INV-1028
+2026-03-13 21:43:37,166 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:43:37,175 - SpareERP - INFO - Database tables initialized.
+2026-03-13 21:43:37,201 - SpareERP - INFO - Database indexes created successfully for performance optimization.
+2026-03-13 21:43:37,231 - SpareERP - INFO - Database initialized at data/spareparts_pro.db
+2026-03-13 21:43:38,462 - SpareERP - INFO - Multi PO PDF saved: reports\PO_Merged_2_Orders_20260313_214337.pdf

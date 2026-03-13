@@ -914,6 +914,33 @@ class ReportGenerator:
                 except Exception as e:
                     app_logger.warning(f"Multi PO PDF row error: {e}")
                     continue
+        
+            # Add grand total row
+            data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+            col_widths = [10 * mm, 20 * mm, 40 * mm, 12 * mm, 13 * mm, 16 * mm, 14 * mm, 14 * mm, 16 * mm, 25 * mm]
+            
+            extra = [
+                ("ALIGN", (0, 0), (0, -1), "CENTER"), # S.No
+                ("ALIGN", (3, 0), (9, -1), "RIGHT"),  # Numbers right
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), # Grand total bold
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, HEADER_ORANGE),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff3cd"))
+            ]
+            
+            t_items = Table(data, colWidths=col_widths, repeatRows=1)
+            t_items.setStyle(_make_table_style(HEADER_ORANGE, extra))
+            all_elements.append(t_items)
+            
+            all_elements.append(Spacer(1, 30))
+            all_elements.append(Paragraph("Authorized Signatory: ___________________", sig_style))
+
+        try:
+            doc.build(all_elements)
+            app_logger.info(f"Multi PO PDF saved: {file_path}")
+            return True, file_path
+        except Exception as e:
+            app_logger.error(f"Failed to generate multi PO PDF: {e}")
+            return False, str(e)
 
     def generate_comprehensive_report_pdf(self, sales_data, expense_data, total_revenue, total_expenses, total_net, d_from, d_to):
         """

@@ -1,9 +1,9 @@
 # settings_page.py — Enhanced Settings (v2.0)
 from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton,
                              QScrollArea, QComboBox, QGroupBox, QCheckBox, QFileDialog,
-                             QDialog, QListWidget, QListWidgetItem, QLineEdit, QTextEdit,
+                              QDialog, QListWidget, QListWidgetItem, QLineEdit, QTextEdit,
                              QFrame, QGridLayout, QButtonGroup, QRadioButton, QSizePolicy,
-                             QFormLayout)
+                             QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget)
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap
 from styles import (COLOR_ACCENT_CYAN, COLOR_ACCENT_GREEN, COLOR_TEXT_PRIMARY,
@@ -146,51 +146,85 @@ class SettingsPage(QWidget):
     # ─── UI Setup ────────────────────────────────────────────────────────────
     def setup_ui(self):
         main_layout = QVBoxLayout(self)
-        main_layout.setContentsMargins(30, 30, 30, 30)
-        main_layout.setSpacing(20)
+        main_layout.setContentsMargins(20, 20, 20, 20)
+        main_layout.setSpacing(15)
 
         # Header
-        header_container = QVBoxLayout()
         header = QLabel("⚙️ SYSTEM SETTINGS")
-        header.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 26px; font-weight: bold; letter-spacing: 3px;")
-        header_container.addWidget(header)
-        subtitle = QLabel("Configure shop identity, invoice format, GST settings, and more")
-        subtitle.setStyleSheet("color: #888; font-size: 12px; margin-top: 5px;")
-        header_container.addWidget(subtitle)
-        main_layout.addLayout(header_container)
+        header.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 24px; font-weight: bold; letter-spacing: 2px;")
+        main_layout.addWidget(header)
 
-        # Scroll Area
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("background: transparent; border: none;")
-        content = QWidget()
-        content.setStyleSheet("background: transparent;")
-        self.content_layout = QVBoxLayout(content)
-        self.content_layout.setSpacing(20)
+        # Main Tab Widget
+        self.tabs = QTabWidget()
+        self.tabs.setStyleSheet(f"""
+            QTabWidget::pane {{
+                border: 1px solid #1a1a2e;
+                background: rgba(5, 8, 15, 0.4);
+                border-radius: 8px;
+                top: -1px;
+            }}
+            QTabBar::tab {{
+                background: #0a0a0a;
+                color: #888;
+                padding: 10px 20px;
+                border: 1px solid #1a1a2e;
+                border-bottom: none;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
+                margin-right: 5px;
+                font-weight: bold;
+                font-size: 11px;
+            }}
+            QTabBar::tab:selected {{
+                background: qlineargradient(x1:0, y1:0, x2:0, y2:1, stop:0 #1a1a2e, stop:1 #0a0a0a);
+                color: {COLOR_ACCENT_CYAN};
+                border: 1px solid #1a1a2e;
+                border-top: 2px solid {COLOR_ACCENT_CYAN};
+            }}
+            QTabBar::tab:hover {{
+                color: white;
+            }}
+        """)
+        main_layout.addWidget(self.tabs)
 
-        # ── Sections ──
+        # Tab 1: SHOP PROFILE
+        self.content_layout = self._add_scroll_tab("🏪 SHOP PROFILE")
         self.create_shop_identity_card()
+        self.content_layout.addStretch()
+
+        # Tab 2: INVOICE SETUP
+        self.content_layout = self._add_scroll_tab("🧾 INVOICE SETUP")
         self.create_invoice_theme_card()
         self.create_gst_settings_card()
         self.create_footer_card()
-        self.create_data_management_card()  # Restored from v1
-        self.create_backup_card()
-        self.create_network_card()
-
         self.content_layout.addStretch()
-        scroll.setWidget(content)
-        main_layout.addWidget(scroll)
 
-        # Save Button
+        # Tab 3: HSN RULES ENGINE
+        self.content_layout = self._add_scroll_tab("🧠 HSN RULES ENGINE")
+        self.create_hsn_engine_card()
+        self.content_layout.addStretch()
+
+        # Tab 4: DATA & BACKUP
+        self.content_layout = self._add_scroll_tab("💾 DATA & BACKUP")
+        self.create_data_management_card()
+        self.create_backup_card()
+        self.content_layout.addStretch()
+
+        # Tab 5: ADVANCED NETWORK
+        self.content_layout = self._add_scroll_tab("🌐 ADVANCED NETWORK")
+        self.create_network_card()
+        self.content_layout.addStretch()
+
+        # Save Button (Always visible at bottom)
         self.btn_save = QPushButton("💾  SAVE ALL SETTINGS")
-        self.btn_save.setFixedHeight(55)
+        self.btn_save.setFixedHeight(50)
         self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_save.setStyleSheet(f"""
             QPushButton {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
                     stop:0 {COLOR_ACCENT_GREEN}, stop:1 #00cc35);
                 color: black; font-weight: bold; border-radius: 8px;
-                font-size: 16px; letter-spacing: 1px;
+                font-size: 15px; letter-spacing: 1px;
             }}
             QPushButton:hover {{
                 background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
@@ -199,6 +233,29 @@ class SettingsPage(QWidget):
         """)
         self.btn_save.clicked.connect(self.save_all_settings)
         main_layout.addWidget(self.btn_save)
+
+    def _add_scroll_tab(self, label):
+        """Helper to create a tab with an internal scroll area and return its layout"""
+        tab_page = QWidget()
+        tab_layout = QVBoxLayout(tab_page)
+        tab_layout.setContentsMargins(0, 0, 0, 0)
+
+        scroll_area = QScrollArea()
+        scroll_area.setWidgetResizable(True)
+        scroll_area.setStyleSheet("QScrollArea { border: none; background-color: transparent; }")
+
+        scroll_content = QWidget()
+        scroll_content.setStyleSheet("background: transparent;")
+        content_layout = QVBoxLayout(scroll_content)
+        # Margin 30 at top to prevent clipping as requested
+        content_layout.setContentsMargins(20, 30, 20, 20)
+        content_layout.setSpacing(15)
+
+        scroll_area.setWidget(scroll_content)
+        tab_layout.addWidget(scroll_area)
+        self.tabs.addTab(tab_page, label)
+        
+        return content_layout
 
     # ── Card creator helper ───────────────────────────────────────────────────
     def create_card_frame(self, title, icon=""):
@@ -612,6 +669,9 @@ class SettingsPage(QWidget):
 
         # Footer
         self.in_footer_text.setText(s.get("invoice_footer_text", "Thank you for your business!"))
+        
+        # HSN Rules
+        self.load_hsn_rules()
 
     def save_all_settings(self):
         """Save all settings cards at once"""
@@ -781,7 +841,161 @@ class SettingsPage(QWidget):
 
     # ─── Network ─────────────────────────────────────────────────────────────
     def open_network_setup(self):
+        """Open the Network Setup Dialog from Settings."""
         from network_setup import NetworkSetupDialog
         dlg = NetworkSetupDialog(self)
         if dlg.exec():
             ProMessageBox.information(self, "Network Updated", "Network configuration saved!\n\nPlease restart the application for changes to take effect.")
+            # Refresh the label
+            import db_config
+            config = db_config.load_config()
+            if config:
+                mode = config.get("mode", "LOCAL")
+                if mode == "SERVER":
+                    ip = db_config.get_local_ip()
+                    self.lbl_network_mode.setText(f"🖥️ SERVER MODE  •  IP: {ip}  •  PC: {db_config.get_computer_name()}")
+                    self.lbl_network_mode.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-weight: bold; font-size: 13px; padding: 12px; background-color: #0a0a0a; border-radius: 8px; border: 1px solid #222;")
+                elif mode == "CLIENT":
+                    server = config.get("server_ip", "?")
+                    self.lbl_network_mode.setText(f"💻 CLIENT MODE  •  Server: {server}")
+                    self.lbl_network_mode.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-weight: bold; font-size: 13px; padding: 12px; background-color: #0a0a0a; border-radius: 8px; border: 1px solid #222;")
+
+    # ── 7. HSN/GST Rules Engine (Hybrid v2.0) ──────────────────────────────────
+    def create_hsn_engine_card(self):
+        group, layout = self.create_card_frame("HSN/GST RULES ENGINE (Self-Learning)", "🧠")
+        
+        desc = QLabel("Admin control for the auto-learning HSN system. Rules are learned from your entries.")
+        desc.setStyleSheet("color: #999; font-weight: normal; margin-bottom: 5px;")
+        layout.addWidget(desc)
+
+        # Table
+        self.hsn_table = QTableWidget(0, 6)
+        self.hsn_table.setHorizontalHeaderLabels(["ID", "Pattern/Keyword", "HSN Code", "Description", "GST %", "Type"])
+        self.hsn_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.hsn_table.verticalHeader().setVisible(False)
+        self.hsn_table.setFixedHeight(300)
+        self.hsn_table.setStyleSheet(ui_theme.get_table_style())
+        layout.addWidget(self.hsn_table)
+
+        # Buttons
+        btn_row = QHBoxLayout()
+        btn_add = QPushButton("➕ Add Rule")
+        btn_edit = QPushButton("✏️ Edit Rule")
+        btn_delete = QPushButton("🗑️ Delete")
+        btn_sync = QPushButton("🔄 Sync/Seed Data")
+        
+        for btn in [btn_add, btn_edit, btn_delete, btn_sync]:
+            btn.setFixedHeight(38)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(ui_theme.get_secondary_button_style())
+            btn_row.addWidget(btn)
+
+        btn_add.clicked.connect(self.add_hsn_rule_dialog)
+        btn_edit.clicked.connect(self.edit_hsn_rule_dialog)
+        btn_delete.clicked.connect(self.delete_hsn_rule_logic)
+        btn_sync.clicked.connect(self.sync_hsn_master_logic)
+        
+        layout.addLayout(btn_row)
+        self.content_layout.addWidget(group)
+        self.load_hsn_rules()
+
+    def load_hsn_rules(self):
+        """Fetch rules and populate table"""
+        rules = self.db_manager.get_hsn_rules()
+        self.hsn_table.setRowCount(0)
+        for row_data in rules:
+            row_idx = self.hsn_table.rowCount()
+            self.hsn_table.insertRow(row_idx)
+            for col_idx, item in enumerate(row_data):
+                val = f"{item}%" if col_idx == 4 else str(item)
+                cell = QTableWidgetItem(val)
+                cell.setForeground(QColor(COLOR_TEXT_PRIMARY))
+                cell.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                self.hsn_table.setItem(row_idx, col_idx, cell)
+
+    def _hsn_rule_dialog(self, title, existing_data=None):
+        dlg = QDialog(self)
+        dlg.setWindowTitle(title)
+        dlg.setMinimumWidth(400)
+        dlg.setStyleSheet("background-color: #080a10; color: white;")
+        layout = QVBoxLayout(dlg)
+        form = QFormLayout()
+        
+        in_pattern = QLineEdit()
+        in_hsn = QLineEdit()
+        in_desc = QLineEdit()
+        in_gst = QComboBox()
+        in_gst.addItems(["0", "5", "12", "18", "28"])
+        
+        for w in [in_pattern, in_hsn, in_desc, in_gst]:
+            w.setStyleSheet(ui_theme.get_lineedit_style())
+            
+        if existing_data:
+            in_pattern.setText(existing_data[1])
+            in_hsn.setText(existing_data[2])
+            in_desc.setText(existing_data[3])
+            in_gst.setCurrentText(str(int(existing_data[4])))
+            
+        form.addRow("Pattern (Keyword):", in_pattern)
+        form.addRow("HSN Code:", in_hsn)
+        form.addRow("Description:", in_desc)
+        form.addRow("GST Rate (%):", in_gst)
+        layout.addLayout(form)
+        
+        btns = QHBoxLayout()
+        btn_save = QPushButton("Save")
+        btn_save.setStyleSheet(ui_theme.get_primary_button_style())
+        btn_save.clicked.connect(dlg.accept)
+        btns.addWidget(btn_save)
+        layout.addLayout(btns)
+        
+        if dlg.exec():
+            # Save logic
+            pat = in_pattern.text().strip()
+            hsn = in_hsn.text().strip()
+            dsc = in_desc.text().strip()
+            gst = float(in_gst.currentText())
+            if pat and hsn:
+                self.db_manager.learn_hsn_rule(pat, hsn, gst) # Using upsert logic
+                self.load_hsn_rules()
+                return True
+        return False
+
+    def add_hsn_rule_dialog(self):
+        self._hsn_rule_dialog("Add New HSN Rule")
+
+    def edit_hsn_rule_dialog(self):
+        curr = self.hsn_table.currentRow()
+        if curr < 0:
+            ProMessageBox.warning(self, "No Selection", "Please select a rule to edit.")
+            return
+        
+        # Extract data from row
+        rule_id = self.hsn_table.item(curr, 0).text()
+        pattern = self.hsn_table.item(curr, 1).text()
+        hsn = self.hsn_table.item(curr, 2).text()
+        desc = self.hsn_table.item(curr, 3).text()
+        gst = self.hsn_table.item(curr, 4).text().replace("%", "")
+        
+        self._hsn_rule_dialog("Edit HSN Rule", (rule_id, pattern, hsn, desc, gst))
+
+    def delete_hsn_rule_logic(self):
+        curr = self.hsn_table.currentRow()
+        if curr < 0:
+            ProMessageBox.warning(self, "No Selection", "Please select a rule to delete.")
+            return
+        
+        rule_id = self.hsn_table.item(curr, 0).text()
+        pattern = self.hsn_table.item(curr, 1).text()
+        
+        if ProMessageBox.question(self, "Confirm Delete", f"Delete HSN rule for '{pattern}'?"):
+            if self.db_manager.delete_hsn_rule(rule_id):
+                self.load_hsn_rules()
+            else:
+                ProMessageBox.critical(self, "Error", "Failed to delete rule.")
+
+    def sync_hsn_master_logic(self):
+        if ProMessageBox.question(self, "Sync Data", "This will re-import all default automotive HSN codes. Existing manual rules will be kept. Proceed?"):
+            self.db_manager.seed_hsn_master()
+            self.load_hsn_rules()
+            ProMessageBox.information(self, "Success", "HSN rules synced with reference data.")

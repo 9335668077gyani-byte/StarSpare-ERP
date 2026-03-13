@@ -13,6 +13,7 @@ from vendor_manager import VendorManagerDialog
 from logger import app_logger
 import os
 from datetime import datetime
+import webbrowser
 
 class BladeDelegate(QStyledItemDelegate):
     """
@@ -454,13 +455,15 @@ class DataLoadThread(QThread):
             self.data_loaded.emit([])
 
 class AddPartDialog(QDialog):
-    def __init__(self, parent=None, part_data=None):
+    def __init__(self, parent=None, db_manager=None, part_data=None):
         super().__init__(parent)
+        self.db_manager = db_manager
         self.setWindowTitle("Add/Edit Part")
         self.setStyleSheet(f"background-color: #1a1a2e; color: {COLOR_TEXT_PRIMARY};")
         self.layout = QFormLayout(self)
         self.part_data = part_data
 
+        # Fields
         self.in_id = QLineEdit()
         self.in_name = QLineEdit()
         self.in_desc = QLineEdit()
@@ -470,9 +473,26 @@ class AddPartDialog(QDialog):
         self.in_col = QLineEdit()
         self.in_reorder = QLineEdit("5")
         self.in_vendor = QLineEdit()
+        self.in_compat = QLineEdit()
+        self.in_category = QLineEdit()
+        self.in_hsn = QLineEdit()
+        self.in_gst = QLineEdit("18.0")
 
-        for w in [self.in_id, self.in_name, self.in_desc, self.in_price, self.in_qty, self.in_rack, self.in_col, self.in_reorder, self.in_vendor]:
+        for w in [self.in_id, self.in_name, self.in_desc, self.in_price, self.in_qty, 
+                  self.in_rack, self.in_col, self.in_reorder, self.in_vendor, 
+                  self.in_compat, self.in_category, self.in_hsn, self.in_gst]:
             w.setStyleSheet(STYLE_INPUT_CYBER)
+
+        # HSN Layout with Verify Button
+        hsn_layout = QHBoxLayout()
+        hsn_layout.addWidget(self.in_hsn)
+        self.btn_verify = QPushButton("🔗 Verify")
+        self.btn_verify.setFixedWidth(80)
+        self.btn_verify.setFixedHeight(DIM_INPUT_HEIGHT)
+        self.btn_verify.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.btn_verify.setStyleSheet(STYLE_NEON_BUTTON.replace("min-width: 120px;", "min-width: 80px;"))
+        self.btn_verify.clicked.connect(self.verify_hsn_online)
+        hsn_layout.addWidget(self.btn_verify)
 
         if part_data:
             self.in_id.setText(str(part_data[0]))
@@ -486,16 +506,30 @@ class AddPartDialog(QDialog):
             if len(part_data) > 7:
                  self.in_reorder.setText(str(part_data[7]))
                  self.in_vendor.setText(str(part_data[8]))
+            if len(part_data) > 10:
+                 self.in_compat.setText(str(part_data[9]))
+                 self.in_category.setText(str(part_data[10]))
+            if len(part_data) > 15:
+                 self.in_hsn.setText(str(part_data[15]))
+                 self.in_gst.setText(str(part_data[16]))
+
+        # Signals for Auto-Fill
+        self.in_name.textChanged.connect(self.auto_suggest_tax_info)
+        self.in_category.textChanged.connect(self.auto_suggest_tax_info)
 
         self.layout.addRow("Part ID:", self.in_id)
         self.layout.addRow("Name:", self.in_name)
+        self.layout.addRow("Category:", self.in_category)
         self.layout.addRow("Description:", self.in_desc)
+        self.layout.addRow("Compatibility:", self.in_compat)
         self.layout.addRow("Price (MRP):", self.in_price)
         self.layout.addRow("Quantity:", self.in_qty)
         self.layout.addRow("Rack:", self.in_rack)
         self.layout.addRow("Column:", self.in_col)
         self.layout.addRow("Reorder Level:", self.in_reorder)
         self.layout.addRow("Vendor Name:", self.in_vendor)
+        self.layout.addRow("HSN Code:", hsn_layout)
+        self.layout.addRow("GST %:", self.in_gst)
 
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
@@ -504,6 +538,34 @@ class AddPartDialog(QDialog):
         self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet("color: white; background: transparent;")
         
         self.layout.addRow(self.buttons)
+
+    def auto_suggest_tax_info(self):
+        """Smart Auto-Fill HSN/GST based on part name or category."""
+        if not self.db_manager: return
+        
+        # Only suggest if fields are empty
+        if self.in_hsn.text().strip() and self.in_gst.text().strip() != "18.0":
+            return
+            
+        term = self.in_name.text().strip() or self.in_category.text().strip()
+        if len(term) < 3: return
+        
+        rule = self.db_manager.search_hsn_rule(term)
+        if rule:
+            if not self.in_hsn.text().strip():
+                self.in_hsn.setText(rule['hsn_code'])
+            if self.in_gst.text().strip() == "18.0" or not self.in_gst.text().strip():
+                self.in_gst.setText(str(rule['gst_rate']))
+
+    def verify_hsn_online(self):
+        """Web Bridge: Verify HSN on the official GST portal."""
+        hsn = self.in_hsn.text().strip()
+        url = "https://services.gst.gov.in/services/searchhsnsac"
+        # We can't deep link directly to a search result easily without a direct query param 
+        # but we can copy HSN to clipboard and open the site.
+        from PyQt6.QtWidgets import QApplication
+        QApplication.clipboard().setText(hsn)
+        webbrowser.open(url)
 
     def get_data(self):
         return {
@@ -515,7 +577,11 @@ class AddPartDialog(QDialog):
             'rack': self.in_rack.text(), 
             'col': self.in_col.text(),
             'reorder': int(self.in_reorder.text() or 5), 
-            'vendor': self.in_vendor.text()
+            'vendor': self.in_vendor.text(),
+            'compat': self.in_compat.text(),
+            'category': self.in_category.text(),
+            'hsn_code': self.in_hsn.text(),
+            'gst_rate': float(self.in_gst.text() or 18.0)
         }
 
 class PurchaseOrderDialog(QDialog):
@@ -1006,7 +1072,7 @@ class InventoryPage(QWidget):
 
     def open_add_dialog(self, part_data=None):
         try:
-            dialog = AddPartDialog(self, part_data)
+            dialog = AddPartDialog(self, self.db_manager, part_data)
             if dialog.exec():
                 data = dialog.get_data()
                 success, msg, is_duplicate = self.db_manager.add_part(data)

@@ -115,6 +115,15 @@ class InvoiceGenerator:
         theme = settings.get("invoice_theme", "Modern (Blue)")
         app_logger.info(f"Generating PDF with Theme: '{theme}' for Invoice: {inv_meta['invoice_id']}")
 
+        # ── Item Data Post-Processing (Hybrid HSN Fallback) ──
+        for item in items:
+            # item: [idx, sys_id, name, HSN, GST%, Disc%, Qty, Rate, Total]
+            if not item[3] or str(item[3]).strip().upper() == 'N/A':
+                rule = self.db_manager.search_hsn_rule(item[2])
+                if rule:
+                    item[3] = rule['hsn_code']
+                    item[4] = rule.get('gst_rate', item[4])
+
         # ── Theme Logic ──
         # Default: Modern (Blue)
         BRAND = (0.10, 0.31, 0.63) # Navy Blue
@@ -245,6 +254,11 @@ class InvoiceGenerator:
         c.setFillColorRGB(*GRAY)
         c.drawString(MARGIN_L, y - 11 * mm, f"Mobile: {inv_meta['mobile']}")
         
+        # Customer GSTIN display (v2.1)
+        if inv_meta.get('customer_gstin'):
+            c.setFont(BODY_FONT, 8)
+            c.drawString(MARGIN_L, y - 15 * mm, f"GSTIN: {inv_meta['customer_gstin']}")
+        
         # Column 2: Vehicle Details
         col2_x = W / 2 + 10 * mm
         c.setFillColorRGB(*SECONDARY)
@@ -272,11 +286,14 @@ class InvoiceGenerator:
         # ━━━━━ ITEMS TABLE (Modern Clean) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         y = extra_y - 15 * mm
         
-        # Columns
+        # Columns (Adjusted for Disc % column and spacing)
         col_sno = MARGIN_L + 2 * mm
-        col_desc = MARGIN_L + 15 * mm
-        col_qty = MARGIN_R - 50 * mm
-        col_rate = MARGIN_R - 30 * mm
+        col_desc = MARGIN_L + 11 * mm
+        col_hsn = MARGIN_R - 95 * mm
+        col_gst = MARGIN_R - 76 * mm
+        col_disc = MARGIN_R - 62 * mm  # New Column
+        col_qty = MARGIN_R - 48 * mm
+        col_rate = MARGIN_R - 33 * mm
         col_amt = MARGIN_R - 2 * mm
 
         def clean_float(val):
@@ -294,9 +311,12 @@ class InvoiceGenerator:
             c.rect(MARGIN_L, y - 8 * mm, CONTENT_W, 8 * mm, fill=1, stroke=0)
             
             c.setFillColorRGB(*WHITE)
-            c.setFont(HEADER_FONT, 9)
+            c.setFont(HEADER_FONT, 8)
             c.drawString(col_sno, y - 5.5 * mm, "#")
             c.drawString(col_desc, y - 5.5 * mm, "DESCRIPTION")
+            c.drawString(col_hsn, y - 5.5 * mm, "HSN")
+            c.drawRightString(col_gst, y - 5.5 * mm, "GST%")
+            c.drawRightString(col_disc, y - 5.5 * mm, "DISC%")
             c.drawRightString(col_qty, y - 5.5 * mm, "QTY")
             c.drawRightString(col_rate, y - 5.5 * mm, "RATE")
             c.drawRightString(col_amt, y - 5.5 * mm, "AMOUNT")
@@ -327,19 +347,37 @@ class InvoiceGenerator:
             # Content
             # SNo
             c.drawString(col_sno, y - 6 * mm, str(item[0]))
-            # Desc (Truncate)
-            desc_text = f"{item[1]} - {item[2]}"
-            if len(desc_text) > 40: desc_text = desc_text[:40] + "..."
+            
+            # Desc
+            desc_text = str(item[2])
+            if len(desc_text) > 30: desc_text = desc_text[:30] + "..."
             c.drawString(col_desc, y - 6 * mm, desc_text)
+            
+            # HSN
+            hsn_text = str(item[3])
+            c.drawString(col_hsn - 2 * mm, y - 6 * mm, hsn_text)
+            
+            # GST%
+            gst_val = clean_float(item[4])
+            c.drawRightString(col_gst, y - 6 * mm, f"{gst_val:.0f}%")
+
+            # DISC%
+            disc_val = clean_float(item[5])
+            c.drawRightString(col_disc, y - 6 * mm, f"{disc_val:.0f}%")
+            
             # Qty
-            c.drawRightString(col_qty, y - 6 * mm, str(item[3]))
-            # Rate
-            rate_val = clean_float(item[4])
+            qty_val = str(item[6])
+            c.drawRightString(col_qty, y - 6 * mm, qty_val)
+            
+            # Rate (MRP)
+            rate_val = clean_float(item[7])
             c.drawRightString(col_rate, y - 6 * mm, f"{rate_val:.2f}")
-            # Amount
-            amt_val = clean_float(item[5])
+            
+            # Amount (Final)
+            amt_val = clean_float(item[8])
             c.setFont(HEADER_FONT, 9)
             c.drawRightString(col_amt, y - 6 * mm, f"{amt_val:.2f}")
+            c.setFont(BODY_FONT, 9)
             
             y -= ROW_H
 
@@ -369,46 +407,38 @@ class InvoiceGenerator:
         card_w = 70 * mm
         card_x = MARGIN_R - card_w
         
-        # Subtotal
+          # Total MRP
         c.setFillColorRGB(*GRAY)
         c.setFont(BODY_FONT, 10)
-        c.drawString(card_x, y, "Sub Total:")
+        c.drawString(card_x, y, "Total MRP:")
         c.setFillColorRGB(*BLACK)
-        c.drawRightString(MARGIN_R, y, f"{inv_meta['sub_total']:.2f}")
+        c.drawRightString(MARGIN_R, y, f"{inv_meta.get('original_mrp', 0.0):.2f}")
         
-        # Discount
+        # Total Savings
         y -= 6 * mm
         c.setFillColorRGB(*GRAY)
-        c.drawString(card_x, y, "Discount:")
-        if inv_meta['discount'] > 0:
+        c.drawString(card_x, y, "Total Savings:")
+        savings = inv_meta.get('total_savings', 0.0)
+        if savings > 0:
             c.setFillColorRGB(*RED)
-            c.drawRightString(MARGIN_R, y, f"- {inv_meta['discount']:.2f}")
+            c.drawRightString(MARGIN_R, y, f"- {savings:.2f}")
         else:
             c.setFillColorRGB(*BLACK)
             c.drawRightString(MARGIN_R, y, "0.00")
 
-        # GST Breakdown (CGST+SGST or IGST)
-        if show_gst_breakdown:
-            taxable = max(0.0, inv_meta.get('sub_total', 0.0) - inv_meta.get('discount', 0.0))
-            gst_rate_half = default_gst_rate / 2.0
-            gst_amt = taxable * default_gst_rate / 100.0
-            half_amt = taxable * gst_rate_half / 100.0
-            y -= 6 * mm
-            c.setFillColorRGB(*GRAY)
-            c.setFont(BODY_FONT, 9)
-            if "IGST" in gst_mode:
-                c.drawString(card_x, y, f"IGST ({default_gst_rate:.0f}%):")
-                c.setFillColorRGB(*BLACK)
-                c.drawRightString(MARGIN_R, y, f"{gst_amt:.2f}")
-            else:
-                c.drawString(card_x, y, f"CGST ({gst_rate_half:.1f}%):")
-                c.setFillColorRGB(*BLACK)
-                c.drawRightString(MARGIN_R, y, f"{half_amt:.2f}")
-                y -= 5 * mm
-                c.setFillColorRGB(*GRAY)
-                c.drawString(card_x, y, f"SGST ({gst_rate_half:.1f}%):")
-                c.setFillColorRGB(*BLACK)
-                c.drawRightString(MARGIN_R, y, f"{half_amt:.2f}")
+        # Taxable Value
+        y -= 6 * mm
+        c.setFillColorRGB(*GRAY)
+        c.drawString(card_x, y, "Taxable Value:")
+        c.setFillColorRGB(*BLACK)
+        c.drawRightString(MARGIN_R, y, f"{inv_meta.get('taxable_value', 0.0):.2f}")
+
+        # GST Included
+        y -= 6 * mm
+        c.setFillColorRGB(*GRAY)
+        c.drawString(card_x, y, "GST (Included):")
+        c.setFillColorRGB(*BLACK)
+        c.drawRightString(MARGIN_R, y, f"{inv_meta.get('gst_included', 0.0):.2f}")
 
         # Grand Total Bar (Retain Brand Color)
         y -= 10 * mm
@@ -477,14 +507,37 @@ class InvoiceGenerator:
         # Transform items for PDF generator (needs list of list/tuple)
         # Current items: [{'name':..., 'qty':..., 'price':..., 'total':...}]
         # Target: [SNo, Name, Desc, Qty, Rate, Amount]
+        # Transform items for PDF generator (needs list of list/tuple)
+        # Current items: [{'name':..., 'qty':..., 'price':..., 'total':...}]
+        # Target: [idx, sys_id, name, HSN, GST%, Disc%, Qty, Rate, Total]
         pdf_items = []
+        tax_details = details.get('tax_details', [])
+        
         for idx, item in enumerate(details['items'], 1):
-             # Ensure defaults
-             name = item.get('name', 'Item')
-             desc = item.get('desc', '')
-             qty = item.get('qty', 0)
-             price = item.get('price', 0.0)
-             total = item.get('total', 0.0)
-             pdf_items.append([idx, name, desc, qty, price, total])
+             sys_id = item.get('part_id', item.get('sys_id', ''))
+             # Try to find tax info in saved tax_details
+             tax_info = next((t for t in tax_details if t.get('id') == sys_id), {})
+             
+             # Calculate effective discount % (Legacy or New)
+             raw_mrp = item.get('base_price', item.get('price', 0.0))
+             discounted_total = item.get('total', 0.0)
+             qty = item.get('qty', 1)
+             unit_discounted = discounted_total / qty if qty > 0 else 0
+             
+             disc_perc = 0.0
+             if raw_mrp > 0:
+                 disc_perc = (1 - (unit_discounted / raw_mrp)) * 100
+             
+             pdf_items.append([
+                 idx, 
+                 sys_id,
+                 item.get('name', 'Item'),
+                 tax_info.get('hsn', item.get('hsn', 'N/A')),
+                 tax_info.get('gst_rate', item.get('gst_rate', 18.0)),
+                 disc_perc, # Index 5: DISC%
+                 qty,
+                 raw_mrp, # Rate (MRP)
+                 discounted_total # Amount (Final)
+             ])
              
         return self.generate_invoice_pdf(details, pdf_items)
