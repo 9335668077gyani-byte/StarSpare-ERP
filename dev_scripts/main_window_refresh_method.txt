@@ -1,0 +1,11 @@
+    def refresh_current_page(self):
+        """Universal refresh - calls load_data on current active page"""
+        current_index = self.stacked_widget.currentIndex()
+        current_widget = self.stacked_widget.currentWidget()
+        
+        # Check if the page has a load_data method
+        if hasattr(current_widget, 'load_data') and callable(getattr(current_widget, 'load_data')):
+            app_logger.info(f"Refreshing page at index {current_index}")
+            current_widget.load_data()
+        else:
+            app_logger.warning(f"Current page (index {current_index}) does not have a load_data method")

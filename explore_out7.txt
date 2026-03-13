@@ -1,0 +1,19 @@
+DB Row Data:
+  Index 0: N9325190
+  Index 1: KIT STEERING CONE
+  Index 2: APACHE RTR 160 2v/ 4V /RONIN
+  Index 3: 652.0
+  Index 4: 6
+  Index 5: 2.0
+  Index 6: 4.0
+  Index 7: 5
+  Index 8: MH
+  Index 9: 
+  Index 10: 
+  Index 11: 2026-02-22 13:30
+  Index 12: None
+  Index 13: ADMIN
+  Index 14: 0.0
+  Index 15: 
+  Index 16: 8714
+  Index 17: 18.0
