@@ -3,3 +3,25 @@ reports/
 __pycache__/
 venv/
 *.pdf
+# Sensitive files - never commit
+*.pem
+*.key
+*.lic
+license.lic
+private.pem
+*.p12
+*.pfx
+*.jks
+# Credentials and secrets
+.env
+.env.local
+secrets.txt
+config.ini
+# IDE and OS files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
