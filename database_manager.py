@@ -2,10 +2,11 @@ import sqlite3
 import json
 import pandas as pd
 import os
+import csv
 from datetime import datetime, timedelta
 from logger import app_logger
-from datetime import datetime, timedelta
-from logger import app_logger
+from contextlib import closing
+from path_utils import get_app_data_path
 
 class DatabaseManager:
     def __init__(self, db_path):
@@ -25,6 +26,7 @@ class DatabaseManager:
             self.migrate_schema()
             self.create_indexes()  # Quick Win #1: Performance boost
             self.seed_hsn_master() # Seed HSN data on init
+            self.seed_tax_masters_from_csv() # Seed from CSVs
             app_logger.info(f"Database initialized at {db_path}")
         except Exception as e:
             app_logger.critical(f"Database initialization failed: {e}")
@@ -39,23 +41,34 @@ class DatabaseManager:
             # 1. Disable Foreign Keys to allow dropping tables out of order
             conn.execute("PRAGMA foreign_keys = OFF")
             
-            # 2. Drop all tables
+            # 2. Wipe transactional tables selectively
             cursor = conn.cursor()
-            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-            tables = cursor.fetchall()
-            for table in tables:
-                if table[0] != "sqlite_sequence": # Don't drop internal sequence
-                    cursor.execute(f"DROP TABLE IF EXISTS {table[0]}")
+            
+            # Business data tables to be completely wiped
+            tables_to_wipe = [
+                "parts", "invoices", "invoice_items", "sales",
+                "purchase_orders", "po_items", "expenses",
+                "returns", "activity_logs", "supplier_catalogs",
+                "vendor_catalog_columns"
+            ]
+            
+            for table in tables_to_wipe:
+                try:
+                    cursor.execute(f"DELETE FROM {table}")
+                except sqlite3.OperationalError:
+                    pass # Table might not exist yet
+                    
+            # Reset auto-increment counts natively so IDs start at 1 again
+            for table in tables_to_wipe:
+                try:
+                    cursor.execute("DELETE FROM sqlite_sequence WHERE name=?", (table,))
+                except sqlite3.OperationalError:
+                    pass
             
             conn.commit()
             
             # 3. Re-enable Foreign Keys
             conn.execute("PRAGMA foreign_keys = ON")
-            
-            # 2. Re-create tables
-            self.create_tables()
-            self.migrate_schema()
-            
             app_logger.warning("FACTORY RESET EXECUTED. All data wiped.")
             return True, "System has been reset to factory defaults."
             
@@ -69,6 +82,50 @@ class DatabaseManager:
         """Adds new columns if they don't exist (v1.5 and v2.0 Upgrades)"""
         conn = self.get_connection()
         try:
+            # --- Procurement Margin Architecture Phase 1 ---
+            # 1. supplier_catalogs (vendor_catalog)
+            try:
+                cursor = conn.execute("PRAGMA table_info(supplier_catalogs)")
+                cat_cols = [col[1] for col in cursor.fetchall()]
+                if "vendor_disc_percent" not in cat_cols:
+                    conn.execute("ALTER TABLE supplier_catalogs ADD COLUMN vendor_disc_percent REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added vendor_disc_percent to supplier_catalogs")
+            except Exception as e:
+                app_logger.error(f"Migration Error (supplier_catalogs): {e}")
+
+            # 2. po_items (purchase_order_items)
+            try:
+                cursor = conn.execute("PRAGMA table_info(po_items)")
+                po_cols = [col[1] for col in cursor.fetchall()]
+                if "vendor_disc_percent" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN vendor_disc_percent REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added vendor_disc_percent to po_items")
+                if "landing_cost" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN landing_cost REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added landing_cost to po_items")
+                if "hsn_code" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN hsn_code TEXT DEFAULT ''")
+                    app_logger.info("Migrated schema: Added hsn_code to po_items")
+                if "gst_rate" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN gst_rate REAL DEFAULT 18.0")
+                    app_logger.info("Migrated schema: Added gst_rate to po_items")
+            except Exception as e:
+                app_logger.error(f"Migration Error (po_items): {e}")
+
+            # 3. parts (inventory)
+            try:
+                cursor = conn.execute("PRAGMA table_info(parts)")
+                inv_cols = [col[1] for col in cursor.fetchall()]
+                if "last_vendor_disc" not in inv_cols:
+                    conn.execute("ALTER TABLE parts ADD COLUMN last_vendor_disc REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added last_vendor_disc to parts")
+                if "avg_landing_cost" not in inv_cols:
+                    conn.execute("ALTER TABLE parts ADD COLUMN avg_landing_cost REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added avg_landing_cost to parts")
+            except Exception as e:
+                app_logger.error(f"Migration Error (parts): {e}")
+            # -----------------------------------------------
+
             # Check for columns in parts
             cursor = conn.execute("PRAGMA table_info(parts)")
             parts_columns = [col[1] for col in cursor.fetchall()]
@@ -100,6 +157,16 @@ class DatabaseManager:
                     conn.execute(f"ALTER TABLE parts ADD COLUMN {col} {dtype}")
                     app_logger.info(f"Migrated schema: Added {col} to parts table")
 
+            # Check for cogs in sales table
+            try:
+                cursor = conn.execute("PRAGMA table_info(sales)")
+                sales_cols = [col[1] for col in cursor.fetchall()]
+                if "cogs" not in sales_cols:
+                    conn.execute("ALTER TABLE sales ADD COLUMN cogs REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added cogs to sales table")
+            except Exception as e:
+                app_logger.error(f"Migration Error (sales): {e}")
+
             # Check for vehicle_model and reg_no in invoices
             cursor = conn.execute("PRAGMA table_info(invoices)")
             invoices_columns = [col[1] for col in cursor.fetchall()]
@@ -114,6 +181,21 @@ class DatabaseManager:
                 if col not in invoices_columns:
                     conn.execute(f"ALTER TABLE invoices ADD COLUMN {col} {dtype}")
                     app_logger.info(f"Migrated schema: Added {col} to invoices table")
+
+            # ── v2.5: Payment Tracking columns ──────────────────────────────────
+            payment_cols = {
+                "payment_cash": "REAL DEFAULT 0.0",
+                "payment_upi":  "REAL DEFAULT 0.0",
+                "payment_due":  "REAL DEFAULT 0.0",
+                "payment_mode": "TEXT DEFAULT 'CASH'",
+            }
+            for col, dtype in payment_cols.items():
+                if col not in invoices_columns:
+                    try:
+                        conn.execute(f"ALTER TABLE invoices ADD COLUMN {col} {dtype}")
+                        app_logger.info(f"Migrated schema: Added {col} to invoices table")
+                    except Exception as _pe:
+                        app_logger.warning(f"Payment col migration skipped ({col}): {_pe}")
 
             # Check for last_login and permissions in users
             cursor = conn.execute("PRAGMA table_info(users)")
@@ -152,6 +234,16 @@ class DatabaseManager:
             except Exception as e:
                 app_logger.error(f"Migration Error (po_items): {e}")
 
+            # Check for global_disc_percent in purchase_orders
+            try:
+                cursor = conn.execute("PRAGMA table_info(purchase_orders)")
+                po_cols = [col[1] for col in cursor.fetchall()]
+                if "global_disc_percent" not in po_cols:
+                    conn.execute("ALTER TABLE purchase_orders ADD COLUMN global_disc_percent REAL DEFAULT 0.0")
+                    app_logger.info("Migrated schema: Added global_disc_percent to purchase_orders")
+            except Exception as e:
+                app_logger.error(f"Migration Error (purchase_orders global_disc): {e}")
+
             # Check for part_id in po_items (Hotfix for v1.5)
             try:
                 cursor = conn.execute("PRAGMA table_info(po_items)")
@@ -163,6 +255,14 @@ class DatabaseManager:
                 if "received_cost" not in po_cols:
                     conn.execute("ALTER TABLE po_items ADD COLUMN received_cost REAL DEFAULT 0.0")
                     app_logger.info("Migrated schema: Added received_cost to po_items table")
+                
+                if "req_rack" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN req_rack TEXT DEFAULT ''")
+                    app_logger.info("Migrated schema: Added req_rack to po_items table")
+                    
+                if "req_col" not in po_cols:
+                    conn.execute("ALTER TABLE po_items ADD COLUMN req_col TEXT DEFAULT ''")
+                    app_logger.info("Migrated schema: Added req_col to po_items table")
 
             except Exception as e:
                 app_logger.error(f"Migration Error (po_items): {e}")
@@ -221,7 +321,7 @@ class DatabaseManager:
 
     def get_connection(self):
         try:
-            conn = sqlite3.connect(self.db_name, timeout=10)
+            conn = sqlite3.connect(self.db_name, timeout=10, check_same_thread=False)
             conn.execute("PRAGMA foreign_keys = ON")
             conn.execute("PRAGMA journal_mode = WAL")      # Concurrent read/write
             conn.execute("PRAGMA busy_timeout = 5000")      # Retry for 5s on lock
@@ -293,6 +393,7 @@ class DatabaseManager:
                     quantity INTEGER,
                     price_at_sale REAL,
                     sale_date TEXT,
+                    cogs REAL DEFAULT 0.0,
                     FOREIGN KEY (part_id) REFERENCES parts(part_id)
                 )
             """)
@@ -399,6 +500,11 @@ class DatabaseManager:
                     qty_ordered INTEGER,
                     qty_received INTEGER DEFAULT 0,
                     received_cost REAL DEFAULT 0.0,
+                    ordered_price REAL DEFAULT 0.0,
+                    hsn_code TEXT DEFAULT '',
+                    gst_rate REAL DEFAULT 18.0,
+                    req_rack TEXT DEFAULT '',
+                    req_col TEXT DEFAULT '',
                     FOREIGN KEY (po_id) REFERENCES purchase_orders(po_id)
                 )
             """)
@@ -427,6 +533,15 @@ class DatabaseManager:
                     description TEXT,
                     gst_rate REAL,
                     rule_type TEXT
+                )
+            """)
+
+            # SAC Master Table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sac_master (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    sac_code TEXT UNIQUE,
+                    description TEXT
                 )
             """)
             
@@ -514,7 +629,7 @@ class DatabaseManager:
                 "shop_address": "CHAUKHTA TIRAH KE PASS\nTALGRAM, KANNAUJ\nUttar Pradesh\nPin: 209731",
                 "shop_mobile": "9598960346, 9807418534",
                 "shop_gstin": "09KVPPS1438N1ZG",
-                "logo_path": "logos/logo.png",
+                "logo_path": os.path.join(get_app_data_path("logos"), "logo.png"),
                 # Invoice & GST Settings (v2.0)
                 "invoice_theme": "Modern (Blue)",
                 "invoice_format": "A4",
@@ -527,13 +642,18 @@ class DatabaseManager:
             for key, val in defaults.items():
                 cursor.execute("INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)", (key, val))
 
-            # Default Users
-            default_users = [
-                ("admin", "admin123", "ADMIN"),
-                ("staff", "staff123", "STAFF")
-            ]
-            for user, pwd, role in default_users:
-                cursor.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)", (user, pwd, role))
+            # Default Users - only create default STAFF on completely fresh databases
+            cursor.execute("SELECT count(*) FROM users")
+            if cursor.fetchone()[0] == 0:
+                default_users = [
+                    ("admin", "admin123", "ADMIN"),
+                    ("staff", "staff123", "STAFF")
+                ]
+                for user, pwd, role in default_users:
+                    cursor.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES (?, ?, ?)", (user, pwd, role))
+            else:
+                # Safety net: ensure an 'admin' always exists so they don't get locked out
+                cursor.execute("INSERT OR IGNORE INTO users (username, password, role) VALUES ('admin', 'admin123', 'ADMIN')")
 
             conn.commit()
             app_logger.info("Database tables initialized.")
@@ -591,6 +711,72 @@ class DatabaseManager:
             # app_logger.info("HSN Master table seeded successfully.")
         except Exception as e:
             app_logger.error(f"Error seeding HSN master: {e}")
+
+    def seed_tax_masters_from_csv(self):
+        """Seed hsn_master and sac_master from CSV files if present."""
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            # Use get_resource_path so CSVs are found in sys._MEIPASS when frozen
+            from path_utils import get_resource_path
+            hsn_path = get_resource_path("HSN_MSTR.csv")
+            sac_path = get_resource_path("SAC_MSTR.csv")
+            
+            if os.path.exists(hsn_path):
+                with open(hsn_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    for row in reader:
+                        if len(row) >= 2:
+                            code, desc = row[0].strip(), row[1].strip()
+                            if code and code.lower() != 'code' and code.lower() != 'hsn_code':
+                                cursor.execute("""
+                                    INSERT OR IGNORE INTO hsn_master (pattern, hsn_code, description, gst_rate, rule_type)
+                                    VALUES (?, ?, ?, ?, ?)
+                                """, (code, code, desc, 18.0, 'csv_import'))
+            
+            if os.path.exists(sac_path):
+                with open(sac_path, 'r', encoding='utf-8') as f:
+                    reader = csv.reader(f)
+                    for row in reader:
+                        if len(row) >= 2:
+                            code, desc = row[0].strip(), row[1].strip()
+                            if code and code.lower() != 'code' and code.lower() != 'sac_code':
+                                cursor.execute("""
+                                    INSERT OR IGNORE INTO sac_master (sac_code, description)
+                                    VALUES (?, ?)
+                                """, (code, desc))
+            
+            conn.commit()
+            conn.close()
+            # app_logger.info("Successfully seeded HSN/SAC masters from CSV.")
+        except Exception as e:
+            app_logger.error(f"Error seeding tax masters from CSV: {e}")
+
+    def get_all_hsn_sac_codes(self):
+        """Retrieve all HSN and SAC codes for UI autocompletion."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            codes = []
+            
+            # Get HSN (using hsn_code field)
+            cursor.execute("SELECT hsn_code FROM hsn_master WHERE hsn_code IS NOT NULL AND hsn_code != ''")
+            codes.extend([row[0] for row in cursor.fetchall()])
+            
+            # Get SAC
+            try:
+                cursor.execute("SELECT sac_code FROM sac_master WHERE sac_code IS NOT NULL AND sac_code != ''")
+                codes.extend([row[0] for row in cursor.fetchall()])
+            except:
+                pass # sac_master might not exist if creation failed
+            
+            return list(set(codes))
+        except Exception as e:
+            app_logger.error(f"Error fetching HSN/SAC codes: {e}")
+            return []
+        finally:
+            conn.close()
 
     def search_hsn_rule(self, search_term):
         """Search for the best HSN/GST match for a given term."""
@@ -868,6 +1054,31 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_admin_override_pin(self):
+        """Fetch the Admin Recovery PIN for discount overrides."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Phase 4 Update: Check direct settings overrides first
+            cursor.execute("SELECT value FROM settings WHERE key = 'admin_override_pin'")
+            row = cursor.fetchone()
+            if row and row[0]:
+                return row[0]
+                
+            # Fallback gracefully to old `users` logic
+            cursor.execute("SELECT recovery_pin FROM users WHERE role = 'ADMIN' LIMIT 1")
+            row = cursor.fetchone()
+            if row and row[0]:
+                return row[0]
+            return None
+        except Exception as e:
+            from logger import app_logger
+            app_logger.error(f"Error fetching admin override PIN: {e}")
+            return None
+        finally:
+            conn.close()
+
     def delete_user(self, user_id):
         conn = self.get_connection()
         try:
@@ -877,6 +1088,51 @@ class DatabaseManager:
             return True, "User Deleted"
         except Exception as e:
             app_logger.error(f"Error deleting user {user_id}: {e}")
+            return False, str(e)
+        finally:
+            conn.close()
+
+    def clear_cart(self):
+        conn = self.get_connection()
+        try:
+            conn.execute("DELETE FROM temp_cart")
+            conn.commit()
+            return True, "Success"
+        except Exception as e:
+            app_logger.error(f"Error clearing cart: {e}")
+            return False, str(e)
+        finally:
+            conn.close()
+
+    def revert_invoice(self, invoice_id):
+        """
+        Safely reverses an invoice's inventory deductions. 
+        Critical for the 'Edit Invoice' flow to restore items before re-applying edited totals.
+        """
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN TRANSACTION")
+            
+            # Fetch all items from sales associated with this invoice
+            cursor.execute("SELECT part_id, quantity FROM sales WHERE invoice_id = ?", (invoice_id,))
+            sales_rows = cursor.fetchall()
+            
+            # Add qty back to parts
+            for row in sales_rows:
+                part_id, sold_qty = row
+                cursor.execute("UPDATE parts SET qty = qty + ? WHERE part_id = ?", (sold_qty, part_id))
+            
+            # Delete those sales records
+            cursor.execute("DELETE FROM sales WHERE invoice_id = ?", (invoice_id,))
+            
+            # We don't delete from `invoices` table because the caller will REPLACE it
+            conn.commit()
+            app_logger.info(f"Reverted inventory impact for invoice {invoice_id}")
+            return True, "Reverted"
+        except Exception as e:
+            conn.rollback()
+            app_logger.error(f"Error reverting invoice {invoice_id}: {e}")
             return False, str(e)
         finally:
             conn.close()
@@ -1043,18 +1299,7 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_setting(self, key, value):
-        """Insert or update a single settings key."""
-        conn = self.get_connection()
-        try:
-            conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, str(value)))
-            conn.commit()
-            return True
-        except Exception as e:
-            app_logger.error(f"Error updating setting '{key}': {e}")
-            return False
-        finally:
-            conn.close()
+    # update_setting is defined below with full logging and tuple return — do not add duplicates here.
 
 
 
@@ -1099,24 +1344,7 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def get_shop_settings(self):
-        conn = self.get_connection()
-        try:
-            rows = conn.execute("SELECT key, value FROM settings").fetchall()
-            raw = {r[0]: r[1] for r in rows}
-            return {
-                "shop_name": raw.get("shop_name", "SpareParts Pro"),
-                "address": raw.get("shop_address", raw.get("address", "")),
-                "mobile": raw.get("shop_mobile", raw.get("mobile", "")),
-                "gstin": raw.get("shop_gstin", raw.get("gstin", "")),
-                "logo_path": raw.get("logo_path", ""),
-                "invoice_theme": raw.get("invoice_theme", "Modern (Blue)")
-            }
-        except Exception as e:
-            app_logger.error(f"Error fetching shop settings: {e}")
-            return {}
-        finally:
-            conn.close()
+    # get_shop_settings is defined above (line ~1200) with full key normalisation — no duplicate needed here.
 
     # --- Inventory Methods ---
     def import_inventory_data(self, csv_path, vendor_override=None):
@@ -1130,8 +1358,8 @@ class DatabaseManager:
             except UnicodeDecodeError:
                 df = pd.read_csv(csv_path, encoding='cp1252')
                 
-            if len(df.columns) < 7: 
-                app_logger.error(f"Import failed: Insufficient columns in CSV. Found {len(df.columns)}, expected at least 7.")
+            if len(df.columns) < 2: 
+                app_logger.error(f"Import failed: Insufficient columns in CSV. Found {len(df.columns)}, expected at least 2 (Part ID, Name).")
                 return False
             
             df = df.fillna("")
@@ -1142,47 +1370,49 @@ class DatabaseManager:
             data_to_insert = []
             for index, row in df.iterrows():
                 try:
-                    # Extract and convert types safely (Numpy to Python Native)
-                    p_id = str(row.iloc[0]).strip()
-                    p_name = str(row.iloc[1]).strip()
-                    p_desc = str(row.iloc[2]).strip()
+                    # Extract and convert types safely with bounds checking
+                    p_id = str(row.iloc[0]).strip() if len(row) > 0 else ""
+                    if not p_id: continue # ID is mandatory
                     
-                    try:
-                        p_price = float(row.iloc[3])
-                    except (ValueError, TypeError):
-                        p_price = 0.0
-                        
-                    try:
-                        p_qty = int(row.iloc[4])
-                    except (ValueError, TypeError):
-                        p_qty = 0
-                        
-                    p_rack = str(row.iloc[5]).strip()
-                    p_col = str(row.iloc[6]).strip()
+                    p_name = str(row.iloc[1]).strip() if len(row) > 1 else "Unknown Part"
+                    p_desc = str(row.iloc[2]).strip() if len(row) > 2 else ""
                     
-                    # Optional Logic
+                    try: p_price = float(row.iloc[3]) if len(row) > 3 else 0.0
+                    except (ValueError, TypeError): p_price = 0.0
+                        
+                    try: p_qty = float(row.iloc[4]) if len(row) > 4 else 0.0
+                    except (ValueError, TypeError): p_qty = 0.0
+                        
+                    p_rack = str(row.iloc[5]).strip() if len(row) > 5 else ""
+                    p_col = str(row.iloc[6]).strip() if len(row) > 6 else ""
+                    
+                    # Extended Optional Logic (up to 18 cols)
                     p_reorder = 5
-                    if len(row) > 7:
-                        try:
-                            p_reorder = int(row.iloc[7])
+                    if len(row) > 7 and str(row.iloc[7]).strip():
+                        try: p_reorder = int(row.iloc[7])
                         except: pass
                         
-                    p_vendor = ""
-                    if vendor_override:
-                        p_vendor = vendor_override
-                    elif len(row) > 8:
-                        p_vendor = str(row.iloc[8]).strip()
+                    p_vendor = vendor_override if vendor_override else (str(row.iloc[8]).strip() if len(row) > 8 else "")
+                    p_compat = str(row.iloc[9]).strip() if len(row) > 9 else ""
+                    p_cat = str(row.iloc[10]).strip() if len(row) > 10 else ""
                     
-                    # Use current time/admin as defaults for new records
-                    # For UPSERT, we will preserve existing values in SQL
-                    added_date = datetime.now().strftime("%Y-%m-%d %H:%M")
-                    added_by = "ADMIN" 
+                    added_date = str(row.iloc[11]).strip() if len(row) > 11 and str(row.iloc[11]).strip() else datetime.now().strftime("%Y-%m-%d %H:%M")
+                    last_ordered = str(row.iloc[12]).strip() if len(row) > 12 else ""
+                    added_by = str(row.iloc[13]).strip() if len(row) > 13 and str(row.iloc[13]).strip() else "ADMIN"
+                    last_edited = str(row.iloc[14]).strip() if len(row) > 14 else ""
+                    hsn_code = str(row.iloc[15]).strip() if len(row) > 15 else "8714"
                     
-                    # Tuple for UPSERT
-                    # (id, name, desc, price, qty, rack, col, reorder, vendor, compat, cat, added, added_by)
+                    try: gst_rate = float(row.iloc[16]) if len(row) > 16 else 18.0
+                    except: gst_rate = 18.0
+                    
+                    try: last_cost = float(row.iloc[17]) if len(row) > 17 else p_price
+                    except: last_cost = p_price
+                    
+                    # Tuple for UPSERT (18 fields)
                     data_to_insert.append((
                         p_id, p_name, p_desc, p_price, p_qty, p_rack, p_col, p_reorder, p_vendor,
-                        "", "", added_date, added_by
+                        p_compat, p_cat, added_date, last_ordered, added_by, last_edited,
+                        hsn_code, gst_rate, last_cost
                     ))
                 except Exception as row_err:
                     app_logger.warning(f"Skipping invalid row {index}: {row_err}")
@@ -1202,18 +1432,23 @@ class DatabaseManager:
                     INSERT INTO parts (
                         part_id, part_name, description, unit_price, qty, 
                         rack_number, col_number, reorder_level, vendor_name, 
-                        compatibility, category, added_date, added_by
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        compatibility, category, added_date, last_ordered_date, added_by, last_edited_date,
+                        hsn_code, gst_rate, last_cost
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(part_id) DO UPDATE SET
                         part_name=excluded.part_name,
                         description=excluded.description,
                         unit_price=excluded.unit_price,
-                        qty=excluded.qty + parts.qty,  -- Aggregate Stock Option? Or Replace? Let's REPLACE stock for import as it's usually a stocktake.
-                                                       -- Actually, let's REPLACE stock. "stocktake" implies current actuals.
+                        qty=excluded.qty,
                         rack_number=excluded.rack_number,
                         col_number=excluded.col_number,
                         reorder_level=excluded.reorder_level,
                         vendor_name=excluded.vendor_name,
+                        compatibility=excluded.compatibility,
+                        category=excluded.category,
+                        hsn_code=excluded.hsn_code,
+                        gst_rate=excluded.gst_rate,
+                        last_cost=excluded.last_cost,
                         last_edited_date=datetime('now', 'localtime')
                 """
                 # Note on Qty: User usually imports a stock sheet. So we replace Qty.
@@ -1263,10 +1498,22 @@ class DatabaseManager:
             conn.close()
 
     def get_part_by_id(self, part_id):
+        part_id = str(part_id).strip()
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM parts WHERE part_id = ?", (part_id,))
+            # Explicit column order matches get_all_parts:
+            # 0:part_id, 1:part_name, 2:desc, 3:unit_price, 4:qty,
+            # 5:rack, 6:col, 7:reorder, 8:vendor, 9:compat, 10:cat,
+            # 11:added_date, 12:last_ordered_date, 13:added_by, 14:last_edited_date,
+            # 15:hsn_code, 16:gst_rate, 17:last_cost
+            cursor.execute("""
+                SELECT part_id, part_name, description, unit_price, qty,
+                       rack_number, col_number, reorder_level, vendor_name,
+                       compatibility, category, added_date, last_ordered_date, added_by, last_edited_date,
+                       hsn_code, gst_rate, last_cost
+                FROM parts WHERE part_id = ?
+            """, (part_id,))
             row = cursor.fetchone()
             return row
         except Exception as e:
@@ -1276,26 +1523,48 @@ class DatabaseManager:
             conn.close()
 
     def sell_part(self, part_id, qty, invoice_id, customer_name, price_override=None):
+        part_id = str(part_id).strip()
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT qty, unit_price FROM parts WHERE part_id = ?", (part_id,))
+            # --- Atomic transaction: stock decrement + sales insert together ---
+            cursor.execute("BEGIN TRANSACTION")
+
+            cursor.execute("SELECT qty, unit_price, avg_landing_cost, last_cost FROM parts WHERE part_id = ?", (part_id,))
             row = cursor.fetchone()
-            if not row: return False, "Part not found"
-            curr_qty, price = row
-            if curr_qty < qty: return False, f"Insufficient stock: {curr_qty}"
-            
+            if not row:
+                conn.rollback()
+                return False, "Part not found"
+
+            curr_qty, price, avg_landing_cost, last_cost = row
+            if curr_qty < qty:
+                conn.rollback()
+                return False, f"Insufficient stock: {curr_qty}"
+
+            # 1. Decrement stock
             cursor.execute("UPDATE parts SET qty = ? WHERE part_id = ?", (curr_qty - qty, part_id))
-            sale_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            # Use override price if provided, otherwise use current DB price
+
+            # 2. Determine sale price
             sale_price = price_override if price_override is not None else price
-            
-            cursor.execute("INSERT INTO sales (invoice_id, part_id, quantity, price_at_sale, sale_date) VALUES (?, ?, ?, ?, ?)", 
-                           (invoice_id, part_id, qty, sale_price, sale_date))
+            sale_date  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            # 3. COGS — prefer weighted avg landing cost, fall back to last_cost
+            unit_cogs  = float(avg_landing_cost) if avg_landing_cost and float(avg_landing_cost) > 0 \
+                         else (float(last_cost) if last_cost else 0.0)
+            total_cogs = float(qty) * unit_cogs
+
+            # 4. Record sale — both steps commit together
+            cursor.execute(
+                "INSERT INTO sales (invoice_id, part_id, quantity, price_at_sale, sale_date, cogs) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (invoice_id, part_id, qty, sale_price, sale_date, total_cogs)
+            )
             conn.commit()
             app_logger.info(f"Part sold: {part_id}, Qty: {qty}, Inv: {invoice_id}")
             return True, "Success"
         except Exception as e:
+            try: conn.rollback()
+            except: pass
             app_logger.error(f"Error selling part {part_id}: {e}")
             return False, str(e)
         finally:
@@ -1304,36 +1573,57 @@ class DatabaseManager:
     def process_return(self, invoice_id, part_id, qty_to_return, refund_amount, reason="Customer Return"):
         """
         Processes a sales return:
-        1. Verifies return validity (optional, but good practice).
-        2. Increases stock in 'parts'.
+        1. Restores stock in 'parts'.
+        2. Reverses the proportional COGS from the originating sales row.
         3. Logs return in 'returns' table.
+        All steps are atomic — rolls back if any step fails.
         """
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            
-            # 1. Get current part info
+            cursor.execute("BEGIN TRANSACTION")
+
+            # 1. Restore stock
             cursor.execute("SELECT qty FROM parts WHERE part_id = ?", (part_id,))
             row = cursor.fetchone()
             if not row:
+                conn.rollback()
                 return False, "Part not found in database."
-            
-            # 2. Update Stock
-            new_qty = row[0] + qty_to_return
-            cursor.execute("UPDATE parts SET qty = ? WHERE part_id = ?", (new_qty, part_id))
-            
-            # 3. Log Return
+
+            cursor.execute("UPDATE parts SET qty = ? WHERE part_id = ?",
+                           (row[0] + qty_to_return, part_id))
+
+            # 2. Reverse COGS proportionally from the matching sales row
+            cursor.execute(
+                "SELECT quantity, cogs FROM sales WHERE invoice_id = ? AND part_id = ?",
+                (invoice_id, part_id)
+            )
+            sale_row = cursor.fetchone()
+            if sale_row and sale_row[0] and sale_row[0] > 0:
+                orig_qty, orig_cogs = sale_row
+                unit_cogs = float(orig_cogs or 0) / float(orig_qty)
+                cogs_reduction = unit_cogs * qty_to_return
+                new_sale_qty  = max(0, orig_qty - qty_to_return)
+                new_sale_cogs = max(0.0, float(orig_cogs or 0) - cogs_reduction)
+                cursor.execute(
+                    "UPDATE sales SET quantity = ?, cogs = ? WHERE invoice_id = ? AND part_id = ?",
+                    (new_sale_qty, new_sale_cogs, invoice_id, part_id)
+                )
+
+            # 3. Log return
             return_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cursor.execute("""
                 INSERT INTO returns (invoice_id, part_id, quantity, refund_amount, return_date, reason)
                 VALUES (?, ?, ?, ?, ?, ?)
             """, (invoice_id, part_id, qty_to_return, refund_amount, return_date, reason))
-            
+
             conn.commit()
             app_logger.info(f"Return Processed: Inv {invoice_id}, Part {part_id}, Qty {qty_to_return}")
             return True, "Return processed successfully."
-            
+
         except Exception as e:
+            try: conn.rollback()
+            except: pass
             app_logger.error(f"Error processing return: {e}")
             return False, str(e)
         finally:
@@ -1360,9 +1650,9 @@ class DatabaseManager:
                     return data
                 elif isinstance(data, dict):
                     return data.get('cart', [])
-            except:
+                return []  # unknown format
+            except (json.JSONDecodeError, TypeError):
                 return []
-            return []
         except Exception as e:
             app_logger.error(f"Error fetching invoice items {invoice_id}: {e}")
             return []
@@ -1380,7 +1670,8 @@ class DatabaseManager:
             # Select relevant columns
             cursor.execute("""
                 SELECT invoice_id, customer_name, mobile, vehicle_model, reg_no, 
-                       total_amount, discount, date, json_items, customer_gstin 
+                       total_amount, discount, date, json_items, customer_gstin,
+                       payment_cash, payment_upi, payment_due, payment_mode
                 FROM invoices 
                 WHERE invoice_id = ?
             """, (invoice_id,))
@@ -1416,13 +1707,19 @@ class DatabaseManager:
                 'total': total,
                 'total_savings': discount_val, # Unified savings
                 'original_mrp': total + discount_val,
-                'taxable_value': total - sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else total / 1.18,
-                'gst_included': sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else total - (total / 1.18),
+                # If tax_details exists, extract precisely. For legacy invoices (no tax_details),
+                # do NOT assume 18% — just show full total as taxable and 0 GST (honest fallback).
+                'taxable_value': total - sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else total,
+                'gst_included':  sum(t.get('gst_amt', 0) for t in tax_details) if tax_details else 0.0,
                 'date': row[7],
                 'items': items,
                 'tax_details': tax_details,
                 'extra_details': extra_details,
-                'customer_gstin': row[9] if len(row) > 9 else ""
+                'customer_gstin': row[9] if len(row) > 9 else "",
+                'payment_cash': row[10] if len(row) > 10 and row[10] is not None else total,
+                'payment_upi': row[11] if len(row) > 11 and row[11] is not None else 0.0,
+                'payment_due': row[12] if len(row) > 12 and row[12] is not None else 0.0,
+                'payment_mode': row[13] if len(row) > 13 and row[13] is not None else "CASH",
             }
         except Exception as e:
             app_logger.error(f"Error fetching invoice details {invoice_id}: {e}")
@@ -1434,15 +1731,15 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            # Explicitly select columns to ensure order, including added_by and last_edited_date
-            # 0:id, 1:name, 2:desc, 3:price, 4:qty, 5:rack, 6:col, 7:reorder, 
-            # 8:vendor, 9:compat, 10:cat, 11:added_date, 12:last_ordered, 13:added_by, 14:last_edited_date
+            # Explicitly select columns to ensure order
+            # 0:id, 1:name, 2:desc, 3:price, 4:qty, 5:rack, 6:col, 7:reorder,
+            # 8:vendor, 9:compat, 10:cat, 11:added_date, 12:last_ordered, 13:added_by, 14:last_edited_date,
             # 15:hsn_code, 16:gst_rate
             cursor.execute("""
-                SELECT part_id, part_name, description, unit_price, qty, 
-                       rack_number, col_number, reorder_level, vendor_name, 
+                SELECT part_id, part_name, description, unit_price, qty,
+                       rack_number, col_number, reorder_level, vendor_name,
                        compatibility, category, added_date, last_ordered_date, added_by, last_edited_date,
-                       hsn_code, gst_rate 
+                       hsn_code, gst_rate, last_cost
                 FROM parts
                 ORDER BY added_date DESC
             """)
@@ -1459,7 +1756,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             # Returns: id, name, qty, reorder, vendor, price, added_date, last_ordered
-            sql = "SELECT part_id, part_name, qty, reorder_level, vendor_name, unit_price, added_date, last_ordered_date FROM parts WHERE qty <= reorder_level"
+            sql = "SELECT part_id, part_name, qty, reorder_level, vendor_name, unit_price, added_date, last_ordered_date FROM parts WHERE CAST(qty AS REAL) <= CAST(reorder_level AS REAL)"
             cursor.execute(sql)
             rows = cursor.fetchall()
             return rows
@@ -1480,12 +1777,14 @@ class DatabaseManager:
             cursor = conn.cursor()
             
             if isinstance(part_data, dict):
-                part_id = part_data['id']
+                part_id = str(part_data['id']).strip()  # Normalize: remove leading/trailing spaces
+                part_data['id'] = part_id  # Write back stripped value
             else:
                 # Legacy support or fallback
                 data = list(part_data)
                 while len(data) < 11: data.append("")
-                part_id = data[0]
+                part_id = str(data[0]).strip()  # Normalize: remove leading/trailing spaces
+                data[0] = part_id  # Write back stripped value
             
             # Check for existing part
             cursor.execute("SELECT part_id, part_name, qty, unit_price FROM parts WHERE part_id = ?", (part_id,))
@@ -1660,6 +1959,7 @@ class DatabaseManager:
             conn.close()
 
     def delete_part(self, part_id):
+        part_id = str(part_id).strip()  # Normalize: remove leading/trailing spaces
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
@@ -1684,45 +1984,49 @@ class DatabaseManager:
         finally:
             conn.close()
 
+
     # --- Invoice Methods ---
     def get_next_invoice_id(self):
         """
         Generate next invoice ID using a sequence stored in settings.
-        Atomic operation to ensure uniqueness.
+        Uses BEGIN IMMEDIATE to make the read+write atomic, preventing
+        duplicate IDs under concurrent access.
         """
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            
-            # 1. Get current sequence or init
+
+            # BEGIN IMMEDIATE: locks the DB for write immediately, so no
+            # other connection can read-then-increment the same sequence.
+            cursor.execute("BEGIN IMMEDIATE")
+
             cursor.execute("SELECT value FROM settings WHERE key='invoice_sequence'")
             row = cursor.fetchone()
-            
+
             if row:
                 current_seq = int(row[0])
             else:
-                # Fallback: Check existing invoices count to init safely
+                # Bootstrap: count existing invoices so legacy DBs start cleanly
                 cursor.execute("SELECT COUNT(*) FROM invoices")
                 count = cursor.fetchone()[0]
-                current_seq = count + 1001 # Match legacy logic
-                
-                # Save initial sequence
-                cursor.execute("INSERT INTO settings (key, value) VALUES ('invoice_sequence', ?)", (current_seq,))
-                conn.commit()
-            
-            # 2. Generate ID
+                current_seq = count + 1001
+
             new_id = f"INV-{current_seq}"
-            
-            # 3. Increment sequence for NEXT time
-            cursor.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('invoice_sequence', ?)", (current_seq + 1,))
+
+            # Increment and persist in the SAME transaction
+            cursor.execute(
+                "INSERT OR REPLACE INTO settings (key, value) VALUES ('invoice_sequence', ?)",
+                (current_seq + 1,)
+            )
             conn.commit()
-            
+
             app_logger.info(f"Generated new Invoice ID: {new_id}")
             return new_id
-            
+
         except Exception as e:
+            try: conn.rollback()
+            except: pass
             app_logger.error(f"Error generating invoice ID: {e}")
-            # Fallback to legacy timestamp logic if DB fails
             return f"INV-ERR-{int(datetime.now().timestamp())}"
         finally:
             conn.close()
@@ -1732,78 +2036,86 @@ class DatabaseManager:
         return self.update_setting('invoice_sequence', new_seq)
 
     def save_invoice(self, invoice_data):
-        # invoice_data: (invoice_id, customer_name, mobile, vehicle_model, reg_no, total_amount, discount, date, json_items, items_count)
+        """
+        invoice_data: (invoice_id, customer_name, mobile, vehicle_model, reg_no,
+                       total_amount, discount, date, json_items, items_count,
+                       customer_gstin[, payment_cash, payment_upi, payment_due, payment_mode])
+        The last 4 payment fields are optional for backward compat — default to CASH.
+        """
         conn = self.get_connection()
         try:
-            # Migration/Backward Compat logic
             invoice_data = list(invoice_data)
+            # Ensure at minimum 11 base fields
             while len(invoice_data) < 11:
-                invoice_data.append("") # Fill missing with empty string
-            
+                invoice_data.append("")
+            # Payment fields (indices 11-14) — default to full-cash if not provided
+            if len(invoice_data) < 12: invoice_data.append(0.0)   # payment_cash
+            if len(invoice_data) < 13: invoice_data.append(0.0)   # payment_upi
+            if len(invoice_data) < 14: invoice_data.append(0.0)   # payment_due
+            if len(invoice_data) < 15: invoice_data.append("CASH") # payment_mode
+
             conn.execute("""
-                INSERT OR REPLACE INTO invoices 
-                (invoice_id, customer_name, mobile, vehicle_model, reg_no, total_amount, discount, date, json_items, items_count, customer_gstin) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """, invoice_data)
+                INSERT OR REPLACE INTO invoices
+                (invoice_id, customer_name, mobile, vehicle_model, reg_no,
+                 total_amount, discount, date, json_items, items_count, customer_gstin,
+                 payment_cash, payment_upi, payment_due, payment_mode)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, invoice_data[:15])
             conn.commit()
             app_logger.info(f"Invoice saved: {invoice_data[0]}")
             return True, "Saved"
-        except Exception as e: 
+        except Exception as e:
             app_logger.error(f"Error saving invoice: {e}")
             return False, str(e)
         finally:
             conn.close()
 
-    def get_sales_report(self, start_date, end_date, search_query=""):
+    def get_sales_report(self, start_date, end_date, search_query="", dues_only=False):
         """
         Fetch filtered sales records for reporting.
-        Returns: list of (date, invoice_id, customer_name, items_count, total_amount, json_items, invoice_id, has_return)
+        Returns: list of (date, invoice_id, customer_name, items_count, total_amount,
+                          json_items, invoice_id, return_count,
+                          payment_cash, payment_upi, payment_due, payment_mode)
         """
         conn = self.get_connection()
         try:
-            # Smart Search: If query looks like an Invoice ID or Mobile, bypass date filter?
-            # Strategy: Always filter by date UNLESS a specific search term is provided that matches an Invoice ID exactly.
-            
             params = []
-            # Added subquery to check for returns
             sql = """
-                SELECT 
+                SELECT
                     i.date, i.invoice_id, i.customer_name, i.items_count, i.total_amount, i.json_items, i.invoice_id,
-                    (SELECT COUNT(*) FROM returns r WHERE r.invoice_id = i.invoice_id) as return_count
+                    (SELECT COUNT(*) FROM returns r WHERE r.invoice_id = i.invoice_id) as return_count,
+                    COALESCE(i.payment_cash, 0.0) as payment_cash,
+                    COALESCE(i.payment_upi,  0.0) as payment_upi,
+                    COALESCE(i.payment_due,  0.0) as payment_due,
+                    COALESCE(i.payment_mode, 'CASH') as payment_mode,
+                    (SELECT COALESCE(SUM(refund_amount), 0) FROM returns r WHERE r.invoice_id = i.invoice_id) as total_refund
                 FROM invoices i
             """
-            
-            # If searching for a specific Invoice ID (length > 3), check globally
-            is_global_search = False
-            if search_query and len(search_query) > 3:
-                # Check if it might be an invoice ID search
-                is_global_search = True
-            
+
+            is_global_search = bool(search_query and len(search_query) > 3)
+
             if is_global_search:
-                # Global Search Override
                 sql += """
                          WHERE (i.date BETWEEN ? AND ? AND (i.customer_name LIKE ? OR i.mobile LIKE ? OR i.invoice_id LIKE ?))
                          OR i.invoice_id = ?
-                         ORDER BY i.date DESC
                 """
-                         
                 p_start = start_date + " 00:00:00"
-                p_end = end_date + " 23:59:59"
+                p_end   = end_date   + " 23:59:59"
                 q = f"%{search_query}%"
                 params = [p_start, p_end, q, q, q, search_query]
-                
             else:
-                # Standard Date Filter
                 sql += "WHERE i.date BETWEEN ? AND ?"
                 params = [start_date + " 00:00:00", end_date + " 23:59:59"]
-                
                 if search_query:
                     sql += " AND (i.customer_name LIKE ? OR i.mobile LIKE ? OR i.invoice_id LIKE ?)"
                     q = f"%{search_query}%"
                     params.extend([q, q, q])
-                    
-                sql += " ORDER BY i.date DESC"
-            
+
+            if dues_only:
+                sql += " AND COALESCE(i.payment_due, 0.0) > 0"
+
+            sql += " ORDER BY i.date DESC"
+
             cursor = conn.execute(sql, params)
             return cursor.fetchall()
         except Exception as e:
@@ -1812,120 +2124,10 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def get_sales_statistics(self, date_from, date_to):
-        """
-        Get summary statistics for a date range.
-        Returns: (total_invoices, total_revenue, avg_order, max_order, min_order)
-        """
-        conn = self.get_connection()
-        try:
-            sql = """
-                SELECT 
-                    COUNT(*), 
-                    SUM(total_amount), 
-                    AVG(total_amount), 
-                    MAX(total_amount), 
-                    MIN(total_amount) 
-                FROM invoices 
-                WHERE date BETWEEN ? AND ?
-            """
-            cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
-            row = cursor.fetchone()
-            if row:
-                return row # Tuple of 5 values
-            return (0, 0.0, 0.0, 0.0, 0.0)
-        except Exception as e:
-            app_logger.error(f"Error fetching sales stats: {e}")
-            return (0, 0.0, 0.0, 0.0, 0.0)
-        finally:
-            conn.close()
+    # NOTE: get_sales_statistics, get_top_selling_parts, get_top_customers,
+    # and get_sales_by_date_range are defined below (around line 2549+).
+    # Earlier duplicate bodies removed — Python always uses the last definition.
 
-    def get_top_selling_parts(self, date_from, date_to, limit=5):
-        """
-        Get top selling parts by revenue.
-        This requires parsing the JSON items in invoices, which is slow in SQLite.
-        Alternatively, if we had a dedicated sales_items table it would be fast.
-        Since we don't have a sales_items table populated for historical data, 
-        we might need to rely on the 'sales' table if it was being used, 
-        OR parse the JSON. 
-        
-        However, `sell_part` DOES insert into `sales` table!
-        Let's check `sell_part`: 
-        `cursor.execute("INSERT INTO sales (invoice_id, part_id, quantity, price_at_sale, sale_date) ...")`
-        
-        So we CAN use the `sales` table for part-level analytics!
-        """
-        conn = self.get_connection()
-        try:
-            sql = """
-                SELECT 
-                    s.part_id, 
-                    p.part_name, 
-                    SUM(s.quantity) as total_qty, 
-                    SUM(s.quantity * s.price_at_sale) as total_revenue
-                FROM sales s
-                JOIN parts p ON s.part_id = p.part_id
-                WHERE s.sale_date BETWEEN ? AND ?
-                GROUP BY s.part_id
-                ORDER BY total_revenue DESC
-                LIMIT ?
-            """
-            cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59", limit))
-            return cursor.fetchall()
-        except Exception as e:
-            app_logger.error(f"Error fetching top parts: {e}")
-            return []
-        finally:
-            conn.close()
-
-    def get_top_customers(self, date_from, date_to, limit=5):
-        conn = self.get_connection()
-        try:
-            sql = """
-                SELECT 
-                    customer_name, 
-                    COUNT(*) as inv_count, 
-                    SUM(total_amount) as total_spent 
-                FROM invoices 
-                WHERE date BETWEEN ? AND ?
-                GROUP BY customer_name
-                ORDER BY total_spent DESC
-                LIMIT ?
-            """
-            cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59", limit))
-            return cursor.fetchall()
-        except Exception as e:
-            app_logger.error(f"Error fetching top customers: {e}")
-            return []
-        finally:
-            conn.close()
-
-    def get_sales_by_date_range(self, date_from, date_to):
-        """
-        Get daily sales totals for the chart.
-        Returns: list of (date_str, total_amount, invoice_count) ordered by date.
-        """
-        conn = self.get_connection()
-        try:
-            # Group by Day
-            # SQLite substr(date, 1, 10) extracts YYYY-MM-DD from YYYY-MM-DD HH:MM:SS
-            sql = """
-                SELECT 
-                    substr(date, 1, 10) as day, 
-                    SUM(total_amount), 
-                    COUNT(*) 
-                FROM invoices 
-                WHERE date BETWEEN ? AND ?
-                GROUP BY day
-                ORDER BY day ASC
-            """
-            cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
-            return cursor.fetchall()
-        except Exception as e:
-            app_logger.error(f"Error fetching sales chart data: {e}")
-            return []
-        finally:
-            conn.close()
 
     def get_all_invoices(self, query="", date_from=None, date_to=None):
         conn = self.get_connection()
@@ -1944,6 +2146,47 @@ class DatabaseManager:
         except Exception as e:
             app_logger.error(f"Error fetching invoices: {e}")
             return []
+        finally:
+            conn.close()
+
+    def update_invoice_payment(self, invoice_id, payment_cash, payment_upi, payment_due, payment_mode):
+        """Update payment tracking fields for an existing invoice (e.g. 'Collect Due' flow)."""
+        conn = self.get_connection()
+        try:
+            conn.execute("""
+                UPDATE invoices
+                SET payment_cash = ?, payment_upi = ?, payment_due = ?, payment_mode = ?
+                WHERE invoice_id = ?
+            """, (payment_cash, payment_upi, payment_due, payment_mode, invoice_id))
+            conn.commit()
+            app_logger.info(f"Payment updated for invoice {invoice_id}: cash={payment_cash} upi={payment_upi} due={payment_due}")
+            return True, "Payment updated"
+        except Exception as e:
+            app_logger.error(f"Error updating payment for invoice {invoice_id}: {e}")
+            return False, str(e)
+        finally:
+            conn.close()
+
+    def get_payment_summary(self, start_date, end_date):
+        """Return aggregated cash/UPI/due totals and count of invoices with dues for the given date range."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.execute("""
+                SELECT
+                    COALESCE(SUM(payment_cash), 0.0) as total_cash,
+                    COALESCE(SUM(payment_upi),  0.0) as total_upi,
+                    COALESCE(SUM(payment_due),  0.0) as total_due,
+                    COUNT(CASE WHEN COALESCE(payment_due, 0) > 0 THEN 1 END) as due_invoices
+                FROM invoices
+                WHERE date BETWEEN ? AND ?
+            """, (start_date + " 00:00:00", end_date + " 23:59:59"))
+            row = cursor.fetchone()
+            if row:
+                return {"cash": row[0], "upi": row[1], "due": row[2], "due_count": row[3]}
+            return {"cash": 0.0, "upi": 0.0, "due": 0.0, "due_count": 0}
+        except Exception as e:
+            app_logger.error(f"Error fetching payment summary: {e}")
+            return {"cash": 0.0, "upi": 0.0, "due": 0.0, "due_count": 0}
         finally:
             conn.close()
 
@@ -1966,13 +2209,13 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             if date_from and date_to:
-                # Query with date range
+                # Query with date range — use time boundary so same-day end rows aren't missed
                 result = conn.execute("""
                     SELECT id, title, amount, category, date 
                     FROM expenses 
-                    WHERE date BETWEEN ? AND ? 
+                    WHERE date BETWEEN ? AND ?
                     ORDER BY date DESC, id DESC
-                """, (date_from, date_to)).fetchall()
+                """, (date_from, date_to + " 23:59:59")).fetchall()
                 app_logger.info(f"Query expenses between {date_from} and {date_to}: {len(result)} found")
             else:
                 # Get all expenses if no date range
@@ -2025,11 +2268,11 @@ class DatabaseManager:
         conn = self.get_connection()
         try:
             sql = """
-                SELECT date as day, SUM(amount) as daily_total
+                SELECT DATE(date) as day, SUM(amount) as daily_total
                 FROM expenses
-                WHERE date BETWEEN ? AND ?
-                GROUP BY date
-                ORDER BY date ASC
+                WHERE DATE(date) BETWEEN ? AND ?
+                GROUP BY DATE(date)
+                ORDER BY DATE(date) ASC
             """
             cursor = conn.execute(sql, (date_from, date_to))
             rows = cursor.fetchall()
@@ -2055,12 +2298,12 @@ class DatabaseManager:
             cursor.execute("BEGIN TRANSACTION")
             
             # 1. Update PO Item
-            cursor.execute("SELECT qty_ordered, qty_received FROM po_items WHERE id = ?", (line_item_id,))
+            cursor.execute("SELECT qty_ordered, qty_received, req_rack, req_col FROM po_items WHERE id = ?", (line_item_id,))
             row = cursor.fetchone()
             if not row:
                 return False, "Item not found"
             
-            ordered, current_received = row
+            ordered, current_received, req_rack, req_col = row
             new_total_received = current_received + qty_received_now
             
             if new_total_received > ordered:
@@ -2069,8 +2312,11 @@ class DatabaseManager:
                 app_logger.warning(f"Receiving more than ordered: {new_total_received}/{ordered}")
 
             # Update PO Item
-            cursor.execute("UPDATE po_items SET qty_received = ?, received_cost = ? WHERE id = ?", 
-                          (new_total_received, new_buy_price, line_item_id))
+            # NOTE: received_cost stores the *weighted average* buy price across all partial receives,
+            # not just the last price. This ensures vendor_stats spend calculation is accurate.
+            cursor.execute("UPDATE po_items SET qty_received = ? WHERE id = ?", 
+                          (new_total_received, line_item_id))
+            # received_cost will be updated below after computing new_avg (weighted average)
             
             # 2. Update Inventory Part
             
@@ -2081,12 +2327,38 @@ class DatabaseManager:
             current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             
             if part_exists:
-                # Part exists - UPDATE it
+                # Part exists - add stock, update last_cost, and compute weighted avg_landing_cost.
+                # Update part's rack and col IF they were empty in inventory and req_rack/req_col are provided!
+                cursor.execute("SELECT COALESCE(qty,0), COALESCE(avg_landing_cost,0), COALESCE(rack_number,''), COALESCE(col_number,'') FROM parts WHERE part_id = ?",
+                               (part_id,))
+                cost_row = cursor.fetchone()
+                old_qty = float(cost_row[0]) if cost_row else 0.0
+                old_avg = float(cost_row[1]) if cost_row else 0.0
+                inv_rack = cost_row[2] if cost_row and cost_row[2] else ""
+                inv_col = cost_row[3] if cost_row and cost_row[3] else ""
+
+                new_rack = req_rack if req_rack and not inv_rack else inv_rack
+                new_col = req_col if req_col and not inv_col else inv_col
+                
+                new_total_qty = old_qty + qty_received_now
+                if new_total_qty > 0:
+                    new_avg = (old_qty * old_avg + qty_received_now * new_buy_price) / new_total_qty
+                else:
+                    new_avg = new_buy_price
+
+                # Also update received_cost in po_items to the new weighted avg so vendor spend stats are accurate
+                cursor.execute("UPDATE po_items SET received_cost = ? WHERE id = ?", (round(new_avg, 4), line_item_id))
+
                 cursor.execute("""
                     UPDATE parts 
-                    SET qty = COALESCE(qty, 0) + ?, unit_price = ?, last_cost = ?, last_ordered_date = ? 
+                    SET qty = COALESCE(qty, 0) + ?,
+                        last_cost = ?,
+                        avg_landing_cost = ?,
+                        last_ordered_date = ?,
+                        rack_number = ?,
+                        col_number = ?
                     WHERE part_id = ?
-                """, (qty_received_now, new_buy_price, new_buy_price, current_time, part_id))
+                """, (qty_received_now, new_buy_price, round(new_avg, 4), current_time, new_rack, new_col, part_id))
             else:
                 # Part doesn't exist - INSERT it
                 # Get part name from po_items
@@ -2094,18 +2366,22 @@ class DatabaseManager:
                 part_name_row = cursor.fetchone()
                 part_name = part_name_row[0] if part_name_row else part_id
                 
-                # Insert new part into inventory
+                # Insert new part into inventory with avg_landing_cost set from first GRN
                 cursor.execute("""
                     INSERT INTO parts (
                         part_id, part_name, description, unit_price, qty, 
                         rack_number, col_number, reorder_level, vendor_name,
-                        compatibility, category, added_date, added_by, last_cost, last_ordered_date
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        compatibility, category, added_date, added_by,
+                        last_cost, avg_landing_cost, last_ordered_date
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     part_id, part_name, "", new_buy_price, qty_received_now,
-                    "", "", 5, "", "", "", current_time, "PO_SYSTEM", new_buy_price, current_time
+                    req_rack, req_col, 5, "", "", "", current_time, "PO_SYSTEM",
+                    new_buy_price, new_buy_price, current_time  # last_cost = avg_landing_cost = buy price on first receipt
                 ))
                 app_logger.info(f"Created new part in inventory from PO: {part_id} - {part_name}")
+                # Set received_cost for new part too (first receive = buy price)
+                cursor.execute("UPDATE po_items SET received_cost = ? WHERE id = ?", (new_buy_price, line_item_id))
             
             # 3. Check if all items in this PO are received to Close PO?
             # The prompt says "If qty_received < qty_ordered, keep ... (Status: PARTIAL)".
@@ -2118,14 +2394,14 @@ class DatabaseManager:
             po_id_row = cursor.fetchone()
             if po_id_row:
                 po_id = po_id_row[0]
-                # Check if all items for this PO are fully received
-                cursor.execute("SELECT COUNT(*) FROM po_items WHERE po_id = ? AND qty_received < qty_ordered", (po_id,))
+                # Count how many items still have pending qty (strict: ordered > received)
+                cursor.execute(
+                    "SELECT COUNT(*) FROM po_items WHERE po_id = ? AND qty_ordered > qty_received",
+                    (po_id,)
+                )
                 pending_count = cursor.fetchone()[0]
-                
-                new_status = 'PARTIAL'
-                if pending_count == 0:
-                    new_status = 'CLOSED'
-                
+
+                new_status = 'PARTIAL' if pending_count > 0 else 'CLOSED'
                 cursor.execute("UPDATE purchase_orders SET status = ? WHERE po_id = ?", (new_status, po_id))
 
             conn.commit()
@@ -2145,29 +2421,80 @@ class DatabaseManager:
         """
         return self.get_open_po_items()
 
-
-
-
-    def get_financial_summary(self):
+    def force_close_po(self, po_id):
+        """
+        Force close a PO regardless of pending items.
+        - Sets purchase_orders.status = 'CLOSED' 
+        - DOES NOT overwrite qty_received, preserving accurate historical shortfall records.
+        """
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            
-            cursor.execute("SELECT SUM(total_amount) FROM invoices")
+            cursor.execute("BEGIN TRANSACTION")
+
+            # Close the PO header. 
+            # (get_open_po_items excludes 'CLOSED', so this naturally drops it from Backlog)
+            cursor.execute("""
+                UPDATE purchase_orders SET status = 'CLOSED' WHERE po_id = ?
+            """, (po_id,))
+
+            conn.commit()
+            app_logger.info(f"Force closed PO: {po_id}")
+            return True, "Force closed successfully"
+        except Exception as e:
+            app_logger.error(f"Error force closing PO {po_id}: {e}")
+            try: conn.rollback()
+            except: pass
+            return False, str(e)
+        finally:
+            conn.close()
+
+    def get_financial_summary(self, date_from=None, date_to=None):
+        """
+        Returns revenue, expenses, COGS, and net_profit.
+        If date_from and date_to are provided (YYYY-MM-DD strings), results are
+        filtered to that period. Otherwise, all-time totals are returned.
+        """
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+
+            if date_from and date_to:
+                p_start = date_from + " 00:00:00"
+                p_end   = date_to   + " 23:59:59"
+                date_filter_inv  = "WHERE date BETWEEN ? AND ?"
+                date_filter_ret  = "WHERE DATE(return_date) BETWEEN ? AND ?"
+                date_filter_exp  = "WHERE date BETWEEN ? AND ?"
+                date_filter_sale = "WHERE sale_date BETWEEN ? AND ?"
+                params = (p_start, p_end)
+            else:
+                date_filter_inv = date_filter_ret = date_filter_exp = date_filter_sale = ""
+                params = ()
+
+            cursor.execute(f"SELECT SUM(total_amount) FROM invoices {date_filter_inv}", params)
             r = cursor.fetchone()[0]
             revenue = r if r else 0.0
-            
-            cursor.execute("SELECT SUM(amount) FROM expenses")
+
+            cursor.execute(f"SELECT SUM(refund_amount) FROM returns {date_filter_ret}", params)
+            ref = cursor.fetchone()[0]
+            revenue -= ref if ref else 0.0
+
+            cursor.execute(f"SELECT SUM(amount) FROM expenses {date_filter_exp}", params)
             e = cursor.fetchone()[0]
             expenses = e if e else 0.0
-            
+
+            cursor.execute(f"SELECT SUM(cogs) FROM sales {date_filter_sale}", params)
+            c = cursor.fetchone()[0]
+            total_cogs = c if c else 0.0
+
             cursor.execute("SELECT category, SUM(amount) FROM expenses GROUP BY category")
             breakdown = cursor.fetchall()
-            
+
             return {
                 "revenue": revenue,
                 "expenses": expenses,
-                "net_profit": revenue - expenses,
+                "cogs": total_cogs,
+                "net_profit": revenue - expenses - total_cogs,
                 "breakdown": breakdown
             }
         except Exception as e:
@@ -2175,23 +2502,45 @@ class DatabaseManager:
             return {
                 "revenue": 0.0,
                 "expenses": 0.0,
+                "cogs": 0.0,
                 "net_profit": 0.0,
                 "breakdown": []
             }
         finally:
             conn.close()
 
-    def get_customer_history(self, mobile_number):
+    def get_total_cogs(self, date_from, date_to):
+        """Fetch summed COGS from the sales table for a specific period."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            sql = "SELECT SUM(cogs) FROM sales WHERE sale_date BETWEEN ? AND ?"
+            cursor.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
+            c = cursor.fetchone()[0]
+            return float(c) if c else 0.0
+        except Exception as e:
+            app_logger.error(f"Error getting total COGS: {e}")
+            return 0.0
+        finally:
+            conn.close()
+
+    def get_customer_history(self, search_term):
+        """Look up the most recent invoice matching mobile, reg_no, GSTIN, or customer name."""
+        if not search_term:
+            return None
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT customer_name, vehicle_model, reg_no, customer_gstin 
+                SELECT customer_name, mobile, vehicle_model, reg_no, customer_gstin 
                 FROM invoices 
-                WHERE mobile = ? 
+                WHERE mobile = ?
+                   OR reg_no = ?
+                   OR customer_gstin = ?
+                   OR LOWER(customer_name) LIKE LOWER(?)
                 ORDER BY date DESC 
                 LIMIT 1
-            """, (mobile_number,))
+            """, (search_term, search_term, search_term, f"%{search_term}%"))
             row = cursor.fetchone()
             return row if row else None
         except Exception as e:
@@ -2199,6 +2548,7 @@ class DatabaseManager:
             return None
         finally:
             conn.close()
+
 
     # --- Custom Billing Fields Methods ---
     def get_custom_billing_fields(self):
@@ -2310,14 +2660,20 @@ class DatabaseManager:
 
     # --- Analytics Methods for Sales Dashboard ---
     def get_sales_by_date_range(self, date_from, date_to):
-        """Get daily sales data for charting"""
+        """Get daily net sales data for charting (gross minus refunds)"""
         conn = self.get_connection()
         try:
             sql = """
-                SELECT DATE(date) as sale_date, SUM(total_amount) as daily_total, COUNT(*) as invoice_count
-                FROM invoices
-                WHERE date BETWEEN ? AND ?
-                GROUP BY DATE(date)
+                SELECT 
+                    DATE(i.date) as sale_date,
+                    SUM(i.total_amount) - COALESCE(
+                        (SELECT SUM(r.refund_amount) FROM returns r
+                         WHERE DATE(r.return_date) = DATE(i.date)), 0
+                    ) as daily_net_total,
+                    COUNT(*) as invoice_count
+                FROM invoices i
+                WHERE i.date BETWEEN ? AND ?
+                GROUP BY DATE(i.date)
                 ORDER BY sale_date ASC
             """
             cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
@@ -2356,18 +2712,21 @@ class DatabaseManager:
             conn.close()
     
     def get_top_customers(self, date_from, date_to, limit=5):
-        """Get top customers by revenue"""
+        """Get top customers by net revenue (after returns)"""
         conn = self.get_connection()
         try:
             sql = """
                 SELECT 
-                    customer_name,
+                    i.customer_name,
+                    i.mobile,
                     COUNT(*) as purchase_count,
-                    SUM(total_amount) as total_spent
-                FROM invoices
-                WHERE date BETWEEN ? AND ?
-                GROUP BY customer_name
-                ORDER BY total_spent DESC
+                    SUM(i.total_amount) - COALESCE(
+                        (SELECT SUM(r.refund_amount) FROM returns r WHERE r.invoice_id = i.invoice_id), 0
+                    ) as net_spent
+                FROM invoices i
+                WHERE i.date BETWEEN ? AND ?
+                GROUP BY i.customer_name, i.mobile
+                ORDER BY net_spent DESC
                 LIMIT ?
             """
             cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59", limit))
@@ -2375,6 +2734,34 @@ class DatabaseManager:
             return rows
         except Exception as e:
             app_logger.error(f"Error getting top customers: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_dues_detail(self, limit=50):
+        """Get all invoices with outstanding dues, sorted by oldest first."""
+        conn = self.get_connection()
+        try:
+            sql = """
+                SELECT
+                    i.invoice_id,
+                    i.customer_name,
+                    COALESCE(i.mobile, '')          as mobile,
+                    i.total_amount,
+                    COALESCE(i.payment_cash, 0.0)   as paid_cash,
+                    COALESCE(i.payment_upi,  0.0)   as paid_upi,
+                    COALESCE(i.payment_due,  0.0)   as due_amount,
+                    COALESCE(i.payment_mode,'CASH') as pay_mode,
+                    i.date
+                FROM invoices i
+                WHERE COALESCE(i.payment_due, 0.0) > 0
+                ORDER BY i.date ASC
+                LIMIT ?
+            """
+            cursor = conn.execute(sql, (limit,))
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error fetching dues detail: {e}")
             return []
         finally:
             conn.close()
@@ -2395,10 +2782,82 @@ class DatabaseManager:
             """
             cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
             row = cursor.fetchone()
-            return row if row else (0, 0, 0, 0, 0)
+            
+            refund_sql = "SELECT COALESCE(SUM(refund_amount), 0) FROM returns WHERE DATE(return_date) BETWEEN ? AND ?"
+            cursor = conn.execute(refund_sql, (date_from, date_to))
+            ref_row = cursor.fetchone()
+            total_refund = ref_row[0] if ref_row else 0.0
+            
+            if row and row[0] > 0:
+                rev = (row[1] if row[1] else 0) - total_refund
+                return (row[0], rev, row[2], row[3], row[4])
+            return (0, 0, 0, 0, 0)
         except Exception as e:
             app_logger.error(f"Error getting sales statistics: {e}")
             return (0, 0, 0, 0, 0)
+        finally:
+            conn.close()
+
+    def get_low_stock_parts(self, limit=6):
+        """Get parts at or below their reorder level, ordered by urgency."""
+        conn = self.get_connection()
+        try:
+            sql = """
+                SELECT part_id, part_name, qty, reorder_level, category
+                FROM parts
+                WHERE qty <= reorder_level
+                ORDER BY (reorder_level - qty) DESC, qty ASC
+                LIMIT ?
+            """
+            cursor = conn.execute(sql, (limit,))
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting low stock parts: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_payment_mode_breakdown(self, date_from, date_to):
+        """Get total revenue split by payment mode (Cash, UPI, Due) for the period."""
+        conn = self.get_connection()
+        try:
+            sql = """
+                SELECT
+                    COALESCE(SUM(COALESCE(payment_cash, total_amount)), 0) as cash_total,
+                    COALESCE(SUM(COALESCE(payment_upi, 0)), 0)             as upi_total,
+                    COALESCE(SUM(COALESCE(payment_due, 0)), 0)             as due_total
+                FROM invoices
+                WHERE date BETWEEN ? AND ?
+            """
+            cursor = conn.execute(sql, (date_from + " 00:00:00", date_to + " 23:59:59"))
+            row = cursor.fetchone()
+            if row:
+                return {"cash": row[0] or 0.0, "upi": row[1] or 0.0, "due": row[2] or 0.0}
+            return {"cash": 0.0, "upi": 0.0, "due": 0.0}
+        except Exception as e:
+            app_logger.error(f"Error getting payment mode breakdown: {e}")
+            return {"cash": 0.0, "upi": 0.0, "due": 0.0}
+        finally:
+            conn.close()
+
+    def get_recent_invoices(self, limit=6):
+        """Get the most recent invoices for the activity feed."""
+        conn = self.get_connection()
+        try:
+            sql = """
+                SELECT invoice_id, customer_name, total_amount,
+                       COALESCE(payment_mode,'CASH') as pay_mode,
+                       COALESCE(payment_due, 0) as due_amt,
+                       date
+                FROM invoices
+                ORDER BY date DESC
+                LIMIT ?
+            """
+            cursor = conn.execute(sql, (limit,))
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting recent invoices: {e}")
+            return []
         finally:
             conn.close()
 
@@ -2448,6 +2907,23 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_purchase_order_by_id(self, po_id):
+        """Fetch a single PO record as a dictionary including global_disc_percent."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM purchase_orders WHERE po_id = ?", (po_id,))
+            row = cursor.fetchone()
+            if row:
+                col_names = [description[0] for description in cursor.description]
+                return dict(zip(col_names, row))
+            return None
+        except Exception as e:
+            app_logger.error(f"Error fetching PO by ID {po_id}: {e}")
+            return None
+        finally:
+            conn.close()
+
     def delete_purchase_order(self, po_id):
         """Delete a PO and its items"""
         conn = self.get_connection()
@@ -2470,21 +2946,83 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def update_po_item_received(self, po_item_id, new_qty_received, po_id=None):
+        """Directly set qty_received on a po_items row (admin correction).
+        Also recalculates the parent PO status.
+        """
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("BEGIN TRANSACTION")
+
+            # 1. Update the line item
+            cursor.execute(
+                "UPDATE po_items SET qty_received = ? WHERE id = ?",
+                (new_qty_received, po_item_id)
+            )
+
+            # 2. Determine parent PO if not given
+            if not po_id:
+                cursor.execute("SELECT po_id FROM po_items WHERE id = ?", (po_item_id,))
+                row = cursor.fetchone()
+                po_id = row[0] if row else None
+
+            # 3. Recalculate PO status
+            if po_id:
+                cursor.execute(
+                    "SELECT COUNT(*) FROM po_items WHERE po_id = ? AND qty_ordered > qty_received",
+                    (po_id,)
+                )
+                pending_count = cursor.fetchone()[0]
+
+                cursor.execute(
+                    "SELECT COUNT(*) FROM po_items WHERE po_id = ? AND qty_received > 0",
+                    (po_id,)
+                )
+                any_received = cursor.fetchone()[0]
+
+                if pending_count == 0:
+                    new_status = 'CLOSED'
+                elif any_received > 0:
+                    new_status = 'PARTIAL'
+                else:
+                    new_status = 'OPEN'
+
+                cursor.execute("UPDATE purchase_orders SET status = ? WHERE po_id = ?",
+                               (new_status, po_id))
+
+            conn.commit()
+            app_logger.info(f"Corrected po_item {po_item_id}: qty_received={new_qty_received}, PO status={new_status if po_id else 'N/A'}")
+            return True, "Updated"
+        except Exception as e:
+            try: conn.rollback()
+            except: pass
+            app_logger.error(f"Error updating po_item received qty: {e}")
+            return False, str(e)
+        finally:
+            conn.close()
+
     def get_po_items(self, po_id):
-        """Get items for a specific PO"""
+        """Get items for a specific PO.
+        Returns: (id, part_id, part_name, qty_ordered, qty_received, ordered_price, hsn_code, gst_rate, vendor_disc_percent)
+        Index:    0    1        2          3             4              5              6          7         8
+        """
         conn = self.get_connection()
         try:
             sql = """
-                SELECT 
+                SELECT
+                    pi.id,
                     pi.part_id,
                     pi.part_name,
                     pi.qty_ordered,
                     pi.qty_received,
-                    (pi.qty_ordered - pi.qty_received) as pending,
-                    pi.received_cost,
-                    (pi.qty_received * pi.received_cost) as total_cost
+                    COALESCE(pi.ordered_price, 0.0)  AS ordered_price,
+                    COALESCE(pi.hsn_code, '')         AS hsn_code,
+                    COALESCE(pi.gst_rate, 18.0)       AS gst_rate,
+                    COALESCE(pi.vendor_disc_percent, 0.0) AS vendor_disc_percent
                 FROM po_items pi
                 WHERE pi.po_id = ?
+                ORDER BY pi.id
             """
             cursor = conn.execute(sql, (po_id,))
             rows = cursor.fetchall()
@@ -2494,21 +3032,9 @@ class DatabaseManager:
             return []
         finally:
             conn.close()
-    # --- Supplier Profile Methods ---
-    def get_vendor_details(self, vendor_name):
-        conn = self.get_connection()
-        try:
-            cursor = conn.cursor()
-            cursor.execute("SELECT * FROM vendors WHERE name = ?", (vendor_name,))
-            row = cursor.fetchone()
-            # row: id, name, rep, phone, address, gstin, notes
-            return row
-        except Exception as e:
-            app_logger.error(f"Error fetching vendor details for {vendor_name}: {e}")
-            return None
-        finally:
-            conn.close()
 
+
+    # --- Supplier Profile Methods ---
     def get_vendor_stats(self, vendor_name):
         conn = self.get_connection()
         try:
@@ -2557,51 +3083,81 @@ class DatabaseManager:
             conn.close()
 
     # --- Purchase Orders (v1.5) ---
-    def create_purchase_order(self, supplier_name, items, total_amount=0.0):
-        # items: list of dicts {part_id, part_name, qty_ordered}
-        conn = self.get_connection()
-        try:
-            cursor = conn.cursor()
-            
-            # Generate PO ID: PO-YYYYMMDD-XXXX
-            date_str = datetime.now().strftime("%Y%m%d")
-            # Get count for today to increment
-            cursor.execute("SELECT COUNT(*) FROM purchase_orders WHERE order_date LIKE ?", (f"{datetime.now().strftime('%Y-%m-%d')}%",))
-            count = cursor.fetchone()[0] + 1
-            po_id = f"PO-{date_str}-{count:04d}"
-            
-            order_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            cursor.execute("INSERT INTO purchase_orders (po_id, supplier_name, order_date, status, total_amount) VALUES (?, ?, ?, ?, ?)",
-                           (po_id, supplier_name, order_date, "OPEN", total_amount))
-            
-            for item in items:
-                # item can have: part_id, part_name, qty_ordered, and optionally price
-                ordered_price = item.get('price', 0.0)  # Default to 0 if not provided
-                cursor.execute(
-                    "INSERT INTO po_items (po_id, part_id, part_name, qty_ordered, qty_received, ordered_price) VALUES (?, ?, ?, ?, 0, ?)",
-                    (po_id, item['part_id'], item['part_name'], item['qty_ordered'], ordered_price)
-                )
-                
-            conn.commit()
-            return True, po_id
-        except Exception as e:
-            app_logger.error(f"Error creating PO: {e}")
-            return False, str(e)
-        finally:
-            conn.close()
-
-    def get_open_po_items(self):
-        # Return list of items from OPEN/PARTIAL POs for receiving
+    def get_catalog_price(self, vendor_name, part_id):
+        """Return the catalog price for a specific vendor+part, or None if not found."""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                SELECT i.id, p.po_id, p.supplier_name, i.part_name, i.qty_ordered, i.qty_received, 
-                       (i.qty_ordered - i.qty_received) as pending, i.part_id
+                SELECT price FROM supplier_catalogs
+                WHERE UPPER(TRIM(vendor_name)) = UPPER(TRIM(?))
+                  AND UPPER(TRIM(part_id)) = UPPER(TRIM(?))
+                LIMIT 1
+            """, (vendor_name, part_id))
+            row = cursor.fetchone()
+            return float(row[0]) if row and row[0] else None
+        except Exception as e:
+            app_logger.debug(f"Catalog price lookup error: {e}")
+            return None
+        finally:
+            conn.close()
+
+    def create_purchase_order(self, supplier_name, items, total_amount=0.0, global_disc_percent=0.0):
+        # items: list of dicts {part_id, part_name, qty_ordered}
+        try:
+            with closing(self.get_connection()) as conn:
+                with conn: # Auto-handles commit/rollback
+                    cursor = conn.cursor()
+                    
+                    # Generate PO ID: PO-YYYYMMDD-XXXX
+                    date_str = datetime.now().strftime("%Y%m%d")
+                    # Get count for today to increment
+                    cursor.execute("SELECT COUNT(*) FROM purchase_orders WHERE order_date LIKE ?", (f"{datetime.now().strftime('%Y-%m-%d')}%",))
+                    count = cursor.fetchone()[0] + 1
+                    po_id = f"PO-{date_str}-{count:04d}"
+                    
+                    order_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    cursor.execute(
+                        "INSERT INTO purchase_orders (po_id, supplier_name, order_date, status, total_amount, global_disc_percent) "
+                        "VALUES (?, ?, ?, ?, ?, ?)",
+                        (po_id, supplier_name, order_date, "OPEN", total_amount, global_disc_percent)
+                    )
+                    
+                    for item in items:
+                        # item can have: part_id, part_name, qty_ordered, price, vendor_disc_percent, landing_cost, hsn_code, gst_rate
+                        ordered_price = item.get('price', 0.0)
+                        v_disc = item.get('vendor_disc_percent', 0.0)
+                        l_cost = item.get('landing_cost', 0.0)
+                        hsn_code = item.get('hsn_code', '')
+                        gst_rate = item.get('gst_rate', 18.0)
+                        req_rack = item.get('req_rack', '')
+                        req_col = item.get('req_col', '')
+                        
+                        cursor.execute("""
+                            INSERT INTO po_items (po_id, part_id, part_name, qty_ordered, qty_received, ordered_price, vendor_disc_percent, landing_cost, hsn_code, gst_rate, req_rack, req_col) 
+                            VALUES (?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?)
+                        """, (po_id, item['part_id'], item['part_name'], item['qty_ordered'], ordered_price, v_disc, l_cost, hsn_code, gst_rate, req_rack, req_col))
+                        
+                    return True, po_id
+        except Exception as e:
+            app_logger.error(f"Error creating PO: {e}")
+            return False, str(e)
+
+    def get_open_po_items(self):
+        """Return pending items from OPEN/PARTIAL POs for receiving and backlog."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT i.id, p.po_id, p.supplier_name, i.part_name,
+                       i.qty_ordered, i.qty_received,
+                       MAX(0, i.qty_ordered - i.qty_received) as pending,
+                       i.part_id
                 FROM purchase_orders p
                 JOIN po_items i ON p.po_id = i.po_id
-                WHERE p.status IN ('OPEN', 'PARTIAL') AND (i.qty_ordered - i.qty_received) > 0
+                WHERE p.status IN ('OPEN', 'PARTIAL')
+                  AND i.qty_ordered > i.qty_received
                 ORDER BY p.order_date ASC
             """)
             return cursor.fetchall()
@@ -2692,17 +3248,17 @@ class DatabaseManager:
             batch_size = 500
             total_items = len(data)
             
-            cursor = conn.cursor()
-            cursor.execute("BEGIN TRANSACTION")
+            # Use `with conn:` context manager — compatible with WAL mode.
+            # Manual BEGIN TRANSACTION conflicts with Python's sqlite3 autocommit handling.
+            with conn:
+                cursor = conn.cursor()
+                for i in range(0, total_items, batch_size):
+                    batch = data[i:i + batch_size]
+                    cursor.executemany("""
+                        INSERT OR REPLACE INTO supplier_catalogs (vendor_name, part_code, part_name, price, ref_stock, extra_data, last_updated)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    """, batch)
             
-            for i in range(0, total_items, batch_size):
-                batch = data[i:i + batch_size]
-                cursor.executemany("""
-                    INSERT OR REPLACE INTO supplier_catalogs (vendor_name, part_code, part_name, price, ref_stock, extra_data, last_updated)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, batch)
-                
-            conn.commit()
             return True, f"Saved {total_items} items in batches."
         except Exception as e:
             app_logger.error(f"Error bulk saving catalog for {vendor}: {e}")
@@ -2734,14 +3290,14 @@ class DatabaseManager:
             conn.close()
 
     # --- Supplier Catalog Persistence ---
-    def save_catalog_item(self, vendor, code, name, price, stock, extra_data=None):
+    def save_catalog_item(self, vendor, code, name, price, stock, extra_data=None, vendor_disc_percent=0.0):
         conn = self.get_connection()
         try:
             timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             conn.execute("""
-                INSERT OR REPLACE INTO supplier_catalogs (vendor_name, part_code, part_name, price, ref_stock, extra_data, last_updated)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-            """, (vendor, code, name, price, stock, extra_data, timestamp))
+                INSERT OR REPLACE INTO supplier_catalogs (vendor_name, part_code, part_name, price, ref_stock, extra_data, last_updated, vendor_disc_percent)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """, (vendor, code, name, price, stock, extra_data, timestamp, vendor_disc_percent))
             conn.commit()
         except Exception as e:
             app_logger.error(f"Error saving catalog item {code}: {e}")
@@ -2749,11 +3305,11 @@ class DatabaseManager:
             conn.close()
 
     def get_supplier_catalog(self, vendor):
-        """Returns list of (part_code, part_name, price, ref_stock, extra_data)"""
+        """Returns list of (part_code, part_name, price, ref_stock, extra_data, vendor_disc_percent)"""
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT part_code, part_name, price, ref_stock, extra_data FROM supplier_catalogs WHERE vendor_name = ?", (vendor,))
+            cursor.execute("SELECT part_code, part_name, price, ref_stock, extra_data, vendor_disc_percent FROM supplier_catalogs WHERE vendor_name = ?", (vendor,))
             return cursor.fetchall()
         except Exception as e:
             app_logger.error(f"Error fetching catalog for {vendor}: {e}")
@@ -2896,31 +3452,30 @@ class DatabaseManager:
         - Low Stock Count (count where stock <= reorder)
         - Vendor Count (count distinct vendor)
         """
-        conn = self.get_connection()
         try:
-            cursor = conn.cursor()
-            query = """
-                SELECT 
-                    SUM(CAST(unit_price AS REAL) * CAST(qty AS INTEGER)),
-                    SUM(CAST(qty AS INTEGER)),
-                    COUNT(*),
-                    SUM(CASE WHEN CAST(qty AS INTEGER) <= CAST(reorder_level AS INTEGER) THEN 1 ELSE 0 END),
-                    COUNT(DISTINCT vendor_name)
-                FROM parts
-            """
-            cursor.execute(query)
-            result = cursor.fetchone()
-            if result:
-                return {
-                    "total_val": result[0] or 0.0,
-                    "total_stock": result[1] or 0,
-                    "part_count": result[2] or 0,
-                    "low_stock_count": result[3] or 0,
-                    "vendor_count": result[4] or 0
-                }
-            return None
+            with closing(self.get_connection()) as conn:
+                with conn:
+                    cursor = conn.cursor()
+                    query = """
+                        SELECT 
+                            SUM(CAST(unit_price AS REAL) * CAST(qty AS REAL)),
+                            SUM(CAST(qty AS REAL)),
+                            COUNT(*),
+                            SUM(CASE WHEN CAST(qty AS REAL) <= CAST(reorder_level AS REAL) THEN 1 ELSE 0 END),
+                            COUNT(DISTINCT vendor_name)
+                        FROM parts
+                    """
+                    cursor.execute(query)
+                    result = cursor.fetchone()
+                    if result:
+                        return {
+                            "total_val": result[0] or 0.0,
+                            "total_stock": result[1] or 0,
+                            "part_count": result[2] or 0,
+                            "low_stock_count": result[3] or 0,
+                            "vendor_count": result[4] or 0
+                        }
+                    return None
         except Exception as e:
             app_logger.error(f"Error fetching inventory stats: {e}")
             return None
-        finally:
-            conn.close()

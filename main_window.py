@@ -75,27 +75,36 @@ class MainWindow(QMainWindow):
         # --- Sidebar (Slim Vertical Dock) ---
         sidebar = QFrame()
         sidebar.setStyleSheet(f"background-color: #080a10; border-right: 1px solid rgba(0, 242, 255, 0.1);") 
-        sidebar.setFixedWidth(90) # Slim Dock
+        sidebar.setFixedWidth(72) # Compact Dock
         sidebar_layout = QVBoxLayout(sidebar)
-        sidebar_layout.setContentsMargins(0, 20, 0, 20)
-        sidebar_layout.setSpacing(24) # Generous vertical spacing
+        sidebar_layout.setContentsMargins(0, 10, 0, 10)
+        sidebar_layout.setSpacing(4) # Tight vertical spacing
         
         # Logo Area (Compact)
         logo_label = QLabel("PRO")
         logo_label.setStyleSheet(f"""
-            color: {COLOR_ACCENT_CYAN}; 
-            font-size: 16px; 
-            font-weight: 800; 
-            letter-spacing: 1px;
-            font-family: 'Orbitron', sans-serif;
-            padding-bottom: 10px;
-            border-bottom: 1px solid #333;
+            color: {COLOR_ACCENT_CYAN};
+            font-size: 15px;
+            font-weight: 900;
+            letter-spacing: 2px;
+            font-family: 'Orbitron', 'Segoe UI', sans-serif;
+            background: rgba(0,242,255,0.08);
+            border: 1px solid rgba(0,242,255,0.25);
+            border-radius: 8px;
+            padding: 4px 0px;
         """)
         logo_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        logo_label.setFixedHeight(28)
         sidebar_layout.addWidget(logo_label)
-        
-        # Spacer
-        sidebar_layout.addSpacing(10)
+
+        # Version label
+        ver_label = QLabel("v1.5")
+        ver_label.setStyleSheet(
+            "color:#334155; font-size:10px; font-family:'Segoe UI'; "
+            "background:transparent; border:none;"
+        )
+        ver_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        sidebar_layout.addWidget(ver_label)
         
         self.nav_buttons = {} # Changed to dict {page_idx: button}
         
@@ -108,6 +117,7 @@ class MainWindow(QMainWindow):
             ("EXPENSES", "💸", 4, "ADMIN", None),
             ("ORDERS", "🛒", 6, "ADMIN", "can_manage_orders"),
             ("ACCESS", "🔒", 5, "ADMIN", "can_manage_self"),
+            ("CATALOG", "📖", 8, "ADMIN", None),
             ("SETTINGS", "⚙️", 7, "ADMIN", "can_backup_data")
         ]
         
@@ -117,18 +127,19 @@ class MainWindow(QMainWindow):
         # Store module and class names as strings for deferred import
         self.page_instances = {}  # Cache loaded pages
         self.page_classes = {
-            0: ("Dashboard", "dashboard_page", "DashboardPage"),
-            1: ("Billing", "billing_page", "BillingPage"),
-            2: ("Inventory", "inventory_page", "InventoryPage"),
-            3: ("Reports", "reports_page", "ReportsPage"),
-            4: ("Expenses", "expense_page", "ExpensePage"),
-            5: ("Access", "user_management_page", "UserManagementPage"),
-            6: ("Orders", "purchase_order_page", "PurchaseOrderPage"),
-            7: ("Settings", "settings_page", "SettingsPage")
+            0: ("Dashboard",      "dashboard_page",        "DashboardPage"),
+            1: ("Billing",        "billing_page",          "BillingPage"),
+            2: ("Inventory",      "inventory_page",        "InventoryPage"),
+            3: ("Reports",        "reports_page",          "ReportsPage"),
+            4: ("Expenses",       "expense_page",          "ExpensePage"),
+            5: ("Access",         "user_management_page",  "UserManagementPage"),
+            6: ("Orders",         "purchase_order_page",   "PurchaseOrderPage"),
+            7: ("Settings",       "settings_page",         "SettingsPage"),
+            8: ("Catalog",        "catalog_page",          "CatalogPage"),
         }
         
-        # Add empty placeholder widgets for each page
-        for idx in range(8):
+        # Add empty placeholder widgets for each page (0–8)
+        for idx in range(9):
             placeholder = QWidget()
             placeholder.setStyleSheet(f"background-color: {COLOR_BACKGROUND};")
             self.stacked_widget.addWidget(placeholder) 
@@ -177,37 +188,88 @@ class MainWindow(QMainWindow):
             self.nav_buttons[page_idx] = btn # Map index to button
             
         sidebar_layout.addStretch()
-        
-        # UNIVERSAL REFRESH BUTTON
-        btn_refresh = QPushButton("🔄")
-        btn_refresh.setFixedSize(70, 35)
+
+        # Refresh button — compact pill
+        btn_refresh = QPushButton("↻")
         btn_refresh.setStyleSheet("""
             QPushButton {
-                background-color: rgba(0, 229, 255, 0.15);
+                background: rgba(0,242,255,0.1);
                 color: #00e5ff;
-                border: 2px solid #00e5ff;
-                border-radius: 6px;
-                font-size: 18px;
-                font-weight: bold;
+                border: 1px solid rgba(0,242,255,0.3);
+                border-radius: 15px;
+                font-size: 16px;
             }
-            QPushButton:hover {
-                background-color: #00e5ff;
-                color: #000;
-            }
+            QPushButton:hover { background: #00e5ff; color: #000; }
         """)
-        btn_refresh.setToolTip("Refresh Current Page Data")
+        btn_refresh.setToolTip("Refresh Current Page  (F5)")
         btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_refresh.clicked.connect(self.refresh_current_page)
-        sidebar_layout.addWidget(btn_refresh)
-        
-        # Logout
-        btn_logout = QPushButton("Logout")
-        btn_logout.setStyleSheet("border: 1px solid #ff4444; color: #ff4444; border-radius: 5px; height: 30px;")
-        btn_logout.clicked.connect(self.close) 
-        sidebar_layout.addWidget(btn_logout)
-        
+        sidebar_layout.addWidget(btn_refresh, alignment=Qt.AlignmentFlag.AlignHCenter)
+        sidebar_layout.addSpacing(4)
+
+        # Logout button — compact red
+        btn_logout = QPushButton("× Out")
+        btn_logout.setStyleSheet("""
+            QPushButton {
+                background: rgba(255,68,68,0.08);
+                color: #f87171;
+                border: 1px solid rgba(255,68,68,0.3);
+                border-radius: 6px;
+                font-size: 11px;
+                font-weight: bold;
+            }
+            QPushButton:hover { background: #ef4444; color: #fff; }
+        """)
+        btn_logout.clicked.connect(self.close)
+        sidebar_layout.addWidget(btn_logout, alignment=Qt.AlignmentFlag.AlignHCenter)
+        sidebar_layout.addSpacing(8)
+
         layout.addWidget(sidebar)
-        layout.addWidget(self.stacked_widget, 1) # Main content stretches
+
+        # ── Right side: top header bar + page stack ──────────────────────────
+        right_side = QWidget()
+        right_side.setStyleSheet(f"background:{COLOR_BACKGROUND};")
+        right_layout = QVBoxLayout(right_side)
+        right_layout.setContentsMargins(0, 0, 0, 0)
+        right_layout.setSpacing(0)
+
+        # Top header bar
+        self.header_bar = QFrame()
+        self.header_bar.setFixedHeight(44)
+        self.header_bar.setStyleSheet(
+            "background:#060a12;"
+            " border-bottom:1px solid rgba(0,242,255,0.12);"
+        )
+        hb_layout = QHBoxLayout(self.header_bar)
+        hb_layout.setContentsMargins(18, 0, 18, 0)
+
+        app_name_lbl = QLabel("SpareParts · Pro")
+        app_name_lbl.setStyleSheet(
+            f"color:{COLOR_ACCENT_CYAN}; font-size:14px;"
+            " font-weight:800; font-family:'Segoe UI'; background:transparent;"
+        )
+        hb_layout.addWidget(app_name_lbl)
+        hb_layout.addStretch()
+
+        self.header_page_label = QLabel("")
+        self.header_page_label.setStyleSheet(
+            "color:#64748b; font-size:12px; font-weight:600;"
+            " letter-spacing:1px; font-family:'Segoe UI'; background:transparent;"
+        )
+        hb_layout.addWidget(self.header_page_label)
+        hb_layout.addStretch()
+
+        user_badge = QLabel(f"  {self.username}  ·  {self.user_role}")
+        user_badge.setStyleSheet(
+            "color:#475569; font-size:11px; font-family:'Segoe UI';"
+            " background:transparent;"
+        )
+        hb_layout.addWidget(user_badge)
+
+        right_layout.addWidget(self.header_bar)
+        right_layout.addWidget(self.stacked_widget, 1)
+        layout.addWidget(right_side, 1)
+
         
         # Quick Win #2: Setup keyboard shortcuts
         self.setup_shortcuts()
@@ -268,32 +330,38 @@ class MainWindow(QMainWindow):
             if page_info is not None:
                 page_name, module_name, class_name = page_info
                 app_logger.info(f"Lazy loading page: {page_name}")
-                
-                # Lazy import the module
+
                 import importlib
                 module = importlib.import_module(module_name)
                 page_class = getattr(module, class_name)
-                
-                # Create page instance
+
                 if class_name == "InventoryPage":
                     page = page_class(self.db_manager, self.user_role, self.username)
                 elif class_name == "UserManagementPage":
                     page = page_class(self.db_manager)
                     page.set_user_context(self.user_role, self.username)
+                elif class_name == "SettingsPage":
+                    page = page_class(self.db_manager)
+                    page.set_main_window(self)
                 else:
                     page = page_class(self.db_manager)
-                
-                # Replace placeholder with real page
+
                 self.stacked_widget.removeWidget(self.stacked_widget.widget(index))
                 self.stacked_widget.insertWidget(index, page)
                 self.page_instances[index] = page
-        
+
         self.stacked_widget.setCurrentIndex(index)
-        # Uncheck all in dict
+
+        # Update header page label
+        if index in self.page_classes:
+            page_display_name = self.page_classes[index][0].upper()
+            self.header_page_label.setText(page_display_name)
+
+        # Update nav button states
         for btn in self.nav_buttons.values():
             btn.setChecked(False)
         button.setChecked(True)
-    
+
     def refresh_current_page(self):
         current_index = self.stacked_widget.currentIndex()
         current_widget = self.stacked_widget.currentWidget()
@@ -302,6 +370,24 @@ class MainWindow(QMainWindow):
             current_widget.load_data()
         else:
             app_logger.warning(f"Current page (index {current_index}) does not have a load_data method")
+
+    def notify_billing_gst_change(self, show_gst: bool):
+        """Called by SettingsPage when GST toggle changes — propagates to BillingPage."""
+        billing_page = self.page_instances.get(1)   # Index 1 = Billing
+        if billing_page and hasattr(billing_page, 'refresh_gst_display'):
+            billing_page.refresh_gst_display(show_gst)
+
+    def go_to_edit_invoice(self, invoice_id):
+        """Teleports user to the Billing module and loads the specified invoice for editing."""
+        if 1 in self.nav_buttons:
+             self.nav_buttons[1].click()
+             
+        page = self.page_instances.get(1)
+        if page and hasattr(page, 'load_invoice_for_edit'):
+             success = page.load_invoice_for_edit(invoice_id)
+             if not success:
+                 from custom_components import ProMessageBox
+                 ProMessageBox.warning(self, "Edit Failed", f"Could not load invoice {invoice_id} for editing.")
 
     def go_to_purchase_page(self, items):
         """

@@ -3,7 +3,7 @@ from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushBut
                              QScrollArea, QComboBox, QGroupBox, QCheckBox, QFileDialog,
                               QDialog, QListWidget, QListWidgetItem, QLineEdit, QTextEdit,
                              QFrame, QGridLayout, QButtonGroup, QRadioButton, QSizePolicy,
-                             QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget)
+                             QFormLayout, QTableWidget, QTableWidgetItem, QHeaderView, QTabWidget, QDoubleSpinBox, QInputDialog)
 from PyQt6.QtCore import Qt, QSize
 from PyQt6.QtGui import QColor, QFont, QIcon, QPixmap
 from styles import (COLOR_ACCENT_CYAN, COLOR_ACCENT_GREEN, COLOR_TEXT_PRIMARY,
@@ -82,9 +82,9 @@ class ThemeCard(QFrame):
         # Icon + name
         name_row = QHBoxLayout()
         icon_lbl = QLabel(theme_data["icon"])
-        icon_lbl.setStyleSheet("font-size: 14px; border: none; background: transparent;")
+        icon_lbl.setStyleSheet(ui_theme.get_page_title_style())
         name_lbl = QLabel(theme_data["name"])
-        name_lbl.setStyleSheet("color: white; font-weight: bold; font-size: 10px; border: none; background: transparent;")
+        name_lbl.setStyleSheet(ui_theme.get_page_title_style())
         name_lbl.setWordWrap(True)
         name_row.addWidget(icon_lbl)
         name_row.addWidget(name_lbl)
@@ -93,7 +93,7 @@ class ThemeCard(QFrame):
 
         # Description
         desc_lbl = QLabel(theme_data["desc"])
-        desc_lbl.setStyleSheet("color: #888; font-size: 8px; border: none; background: transparent;")
+        desc_lbl.setStyleSheet(ui_theme.get_page_title_style())
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
@@ -136,6 +136,7 @@ class SettingsPage(QWidget):
         super().__init__()
         self.db_manager = db_manager
         self._theme_cards = {}
+        self._main_window = None   # Set by MainWindow after construction
         self.setup_ui()
         self.load_settings()
 
@@ -151,7 +152,7 @@ class SettingsPage(QWidget):
 
         # Header
         header = QLabel("⚙️ SYSTEM SETTINGS")
-        header.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 24px; font-weight: bold; letter-spacing: 2px;")
+        header.setStyleSheet(ui_theme.get_page_title_style())
         main_layout.addWidget(header)
 
         # Main Tab Widget
@@ -190,6 +191,7 @@ class SettingsPage(QWidget):
         # Tab 1: SHOP PROFILE
         self.content_layout = self._add_scroll_tab("🏪 SHOP PROFILE")
         self.create_shop_identity_card()
+        self.create_security_settings_card()
         self.content_layout.addStretch()
 
         # Tab 2: INVOICE SETUP
@@ -197,6 +199,7 @@ class SettingsPage(QWidget):
         self.create_invoice_theme_card()
         self.create_gst_settings_card()
         self.create_footer_card()
+        self.create_payment_qr_card()
         self.content_layout.addStretch()
 
         # Tab 3: HSN RULES ENGINE
@@ -215,22 +218,13 @@ class SettingsPage(QWidget):
         self.create_network_card()
         self.content_layout.addStretch()
 
+
+
         # Save Button (Always visible at bottom)
         self.btn_save = QPushButton("💾  SAVE ALL SETTINGS")
-        self.btn_save.setFixedHeight(50)
+        self.btn_save.setFixedHeight(44)
         self.btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_save.setStyleSheet(f"""
-            QPushButton {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 {COLOR_ACCENT_GREEN}, stop:1 #00cc35);
-                color: black; font-weight: bold; border-radius: 8px;
-                font-size: 15px; letter-spacing: 1px;
-            }}
-            QPushButton:hover {{
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #00ff41, stop:1 {COLOR_ACCENT_GREEN});
-            }}
-        """)
+        self.btn_save.setStyleSheet(ui_theme.get_primary_button_style())
         self.btn_save.clicked.connect(self.save_all_settings)
         main_layout.addWidget(self.btn_save)
 
@@ -317,9 +311,9 @@ class SettingsPage(QWidget):
         # Logo row
         logo_row = QHBoxLayout()
         self.lbl_logo_status = QLabel("No logo uploaded")
-        self.lbl_logo_status.setStyleSheet("color: #888; font-size: 11px;")
+        self.lbl_logo_status.setStyleSheet(ui_theme.get_page_title_style())
         btn_logo = QPushButton("🖼️  BROWSE LOGO")
-        btn_logo.setFixedHeight(38)
+        btn_logo.setFixedHeight(36)
         btn_logo.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_logo.setStyleSheet(ui_theme.get_primary_button_style())
         btn_logo.clicked.connect(self.browse_logo)
@@ -328,6 +322,45 @@ class SettingsPage(QWidget):
         logo_row.addWidget(btn_logo)
         layout.addLayout(logo_row)
 
+        self.content_layout.addWidget(group)
+
+    # ── 1.5. Security Settings ───────────────────────────────────────────────
+    def create_security_settings_card(self):
+        group, layout = self.create_card_frame("SECURITY SETTINGS", "🔒")
+
+        desc = QLabel("Configure Admin limits and override PIN required for high-risk actions.")
+        desc.setStyleSheet("color: #999; font-weight: normal;")
+        layout.addWidget(desc)
+
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(12)
+
+        self.in_max_discount = QDoubleSpinBox()
+        self.in_max_discount.setRange(0.0, 100.0)
+        self.in_max_discount.setDecimals(1)
+        self.in_max_discount.setSuffix("%")
+        self.in_max_discount.setValue(9.0)
+        self.in_max_discount.setStyleSheet(ui_theme.get_lineedit_style())
+        
+        self.in_daily_budget = QDoubleSpinBox()
+        self.in_daily_budget.setRange(0.0, 999999.0)
+        self.in_daily_budget.setDecimals(0)
+        self.in_daily_budget.setPrefix("₹ ")
+        self.in_daily_budget.setValue(5000)
+        self.in_daily_budget.setStyleSheet(ui_theme.get_lineedit_style())
+
+        self.in_admin_pin = QLineEdit()
+        self.in_admin_pin.setPlaceholderText("Enter Admin Recovery/Override PIN")
+        self.in_admin_pin.setEchoMode(QLineEdit.EchoMode.Password)
+        self.in_admin_pin.setStyleSheet(ui_theme.get_lineedit_style())
+
+        form.addRow(QLabel("Max Free Discount:"), self.in_max_discount)
+        form.addRow(QLabel("Daily Expense Budget:"), self.in_daily_budget)
+        form.addRow(QLabel("Admin Override PIN:"), self.in_admin_pin)
+
+        layout.addLayout(form)
         self.content_layout.addWidget(group)
 
     # ── 2. Invoice Themes ────────────────────────────────────────────────────
@@ -416,17 +449,18 @@ class SettingsPage(QWidget):
         # Checkboxes
         self.chk_show_gst = QCheckBox("📊  Show GST Breakdown on Invoice (CGST / SGST lines in summary)")
         self.chk_show_gst.setChecked(True)
-        self.chk_show_gst.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY}; font-size: 12px;")
+        self.chk_show_gst.setStyleSheet(ui_theme.get_checkbox_style())
+        self.chk_show_gst.stateChanged.connect(self._on_gst_toggled)
 
         self.chk_show_hsn = QCheckBox("🔢  Show HSN Code on Invoice Line Items")
         self.chk_show_hsn.setChecked(False)
-        self.chk_show_hsn.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY}; font-size: 12px;")
+        self.chk_show_hsn.setStyleSheet(ui_theme.get_checkbox_style())
 
         layout.addWidget(self.chk_show_gst)
         layout.addWidget(self.chk_show_hsn)
 
         info = QLabel("ℹ️  HSN codes are stored per part in Inventory. Enable to print them on invoices.")
-        info.setStyleSheet("color: #555; font-size: 10px; font-style: italic;")
+        info.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(info)
 
         self.content_layout.addWidget(group)
@@ -447,6 +481,60 @@ class SettingsPage(QWidget):
 
         self.content_layout.addWidget(group)
 
+    # ── 4b. Payment QR Settings ───────────────────────────────────────────────
+    def create_payment_qr_card(self):
+        group, layout = self.create_card_frame("PAYMENT QR CODE", "📱")
+
+        desc = QLabel(
+            "Configure the UPI QR code printed on every invoice PDF for instant customer payment."
+        )
+        desc.setStyleSheet("color: #999; font-weight: normal;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        # Enable/Disable QR toggle
+        self.chk_payment_qr = QCheckBox("📲  Show Payment QR Code on Invoice (UPI / GPay / PhonePe / Paytm)")
+        self.chk_payment_qr.setChecked(True)
+        self.chk_payment_qr.setStyleSheet(ui_theme.get_checkbox_style())
+        layout.addWidget(self.chk_payment_qr)
+
+        # UPI ID + Display Name form
+        form = QFormLayout()
+        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
+        form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
+        form.setVerticalSpacing(12)
+
+        self.in_payment_upi_id = QLineEdit()
+        self.in_payment_upi_id.setPlaceholderText("e.g. yourname@upi  or  9876543210@ybl")
+        self.in_payment_upi_id.setStyleSheet(ui_theme.get_lineedit_style())
+        self.in_payment_upi_id.setFixedHeight(38)
+
+        self.in_payment_display_name = QLineEdit()
+        self.in_payment_display_name.setPlaceholderText("e.g. N.A. MOTORS  (leave blank to use Shop Name)")
+        self.in_payment_display_name.setStyleSheet(ui_theme.get_lineedit_style())
+        self.in_payment_display_name.setFixedHeight(38)
+
+        lbl_upi = QLabel("UPI ID:")
+        lbl_upi.setStyleSheet("color: #aaa; font-weight: bold;")
+        lbl_name = QLabel("Display Name:")
+        lbl_name.setStyleSheet("color: #aaa; font-weight: bold;")
+
+        form.addRow(lbl_upi,  self.in_payment_upi_id)
+        form.addRow(lbl_name, self.in_payment_display_name)
+        layout.addLayout(form)
+
+        # Info tip
+        tip = QLabel(
+            "ℹ️  The QR encodes a UPI deep-link so customers can pay directly from any"
+            " UPI app (GPay, PhonePe, Paytm, etc.) by scanning the code on the invoice."
+            " The invoice total amount is pre-filled automatically."
+        )
+        tip.setStyleSheet(ui_theme.get_page_title_style())
+        tip.setWordWrap(True)
+        layout.addWidget(tip)
+
+        self.content_layout.addWidget(group)
+
     # ── 5. Data Management (Export) ──────────────────────────────────────────
     def create_data_management_card(self):
         group, layout = self.create_card_frame("DATA MANAGEMENT", "📊")
@@ -456,15 +544,9 @@ class SettingsPage(QWidget):
         layout.addWidget(desc)
 
         btn_export = QPushButton("📥  EXPORT DATABASE TO EXCEL")
-        btn_export.setFixedHeight(45)
+        btn_export.setFixedHeight(44)
         btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_export.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(255,255,255,0.05); color: {COLOR_TEXT_PRIMARY};
-                border: 1px solid #555; border-radius: 8px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background: rgba(0,242,255,0.15); border-color: {COLOR_ACCENT_CYAN}; color: {COLOR_ACCENT_CYAN}; }}
-        """)
+        btn_export.setStyleSheet(ui_theme.get_ghost_button_style())
         btn_export.clicked.connect(self.export_data)
         layout.addWidget(btn_export)
         self.content_layout.addWidget(group)
@@ -480,7 +562,7 @@ class SettingsPage(QWidget):
                                                       "Excel Files (*.xlsx)")
             if not filepath: return
             
-            conn = sqlite3.connect(self.db_manager.db_name)
+            conn = sqlite3.connect(self.db_manager.db_name, check_same_thread=False)
             # Fetch relevant tables
             writer = pd.ExcelWriter(filepath, engine='openpyxl')
             for table in ["parts", "invoices", "sales", "expenses", "vendors"]:
@@ -515,36 +597,22 @@ class SettingsPage(QWidget):
         btn_row.setSpacing(15)
 
         btn_backup = QPushButton("📦  CREATE BACKUP")
-        btn_backup.setFixedHeight(50)
+        btn_backup.setFixedHeight(44)
         btn_backup.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_backup.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(0,242,255,0.1); color: {COLOR_ACCENT_CYAN};
-                border: 2px solid {COLOR_ACCENT_CYAN}; border-radius: 8px;
-                font-weight: bold; font-size: 14px;
-            }}
-            QPushButton:hover {{ background: {COLOR_ACCENT_CYAN}; color: black; }}
-        """)
+        btn_backup.setStyleSheet(ui_theme.get_neon_action_button())
         btn_backup.clicked.connect(self.manual_backup)
         btn_row.addWidget(btn_backup)
 
-        btn_restore = QPushButton("♻️  RESTORE DATA")
-        btn_restore.setFixedHeight(50)
+        btn_restore = QPushButton("\u267b️  RESTORE DATA")
+        btn_restore.setFixedHeight(44)
         btn_restore.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_restore.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(255,152,0,0.1); color: #ff9800;
-                border: 2px solid #ff9800; border-radius: 8px;
-                font-weight: bold; font-size: 14px;
-            }}
-            QPushButton:hover {{ background: #ff9800; color: black; }}
-        """)
+        btn_restore.setStyleSheet(ui_theme.get_amber_button_style())
         btn_restore.clicked.connect(self.show_restore_dialog)
         btn_row.addWidget(btn_restore)
         layout.addLayout(btn_row)
 
         self.lbl_backup_status = QLabel("✓ Local backup enabled")
-        self.lbl_backup_status.setStyleSheet("color: #00ff41; font-size: 11px; font-style: italic; margin-top: 10px;")
+        self.lbl_backup_status.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(self.lbl_backup_status)
 
         # Cloud Backup
@@ -554,29 +622,31 @@ class SettingsPage(QWidget):
         layout.addWidget(sep)
 
         self.chk_cloud_backup = QCheckBox("☁️  Enable automatic cloud sync")
-        self.chk_cloud_backup.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY}; font-weight: bold; font-size: 13px;")
+        self.chk_cloud_backup.setStyleSheet(ui_theme.get_checkbox_style())
         self.chk_cloud_backup.stateChanged.connect(self.on_cloud_backup_toggled)
         layout.addWidget(self.chk_cloud_backup)
 
         cloud_row = QHBoxLayout()
         cloud_row.setSpacing(10)
         self.lbl_cloud_path = QLabel("Not configured")
-        self.lbl_cloud_path.setStyleSheet("color: #888; padding: 10px; background-color: #0a0a0a; border-radius: 6px; font-size: 11px;")
+        self.lbl_cloud_path.setStyleSheet(ui_theme.get_page_title_style())
         cloud_row.addWidget(self.lbl_cloud_path, 1)
         btn_browse = QPushButton("📁  Browse")
-        btn_browse.setFixedSize(100, 38)
+        btn_browse.setFixedSize(100, 36)
         btn_browse.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_browse.setStyleSheet(f"background-color: #1a1a1a; color: {COLOR_ACCENT_CYAN}; border: 1px solid #333; border-radius: 6px; font-weight: bold;")
+        btn_browse.setStyleSheet(ui_theme.get_neon_action_button())
         btn_browse.clicked.connect(self.select_cloud_folder)
         cloud_row.addWidget(btn_browse)
         layout.addLayout(cloud_row)
 
         self.lbl_cloud_status = QLabel("")
-        self.lbl_cloud_status.setStyleSheet("color: #666; font-size: 10px; font-style: italic;")
+        self.lbl_cloud_status.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(self.lbl_cloud_status)
 
         self.content_layout.addWidget(group)
         self.load_cloud_settings()
+
+
 
     # ── 6. Network Setup ──────────────────────────────────────────────────────
     def create_network_card(self):
@@ -610,79 +680,86 @@ class SettingsPage(QWidget):
         layout.addWidget(self.lbl_network_mode)
 
         btn_network = QPushButton("🔄  RECONFIGURE NETWORK")
-        btn_network.setFixedHeight(45)
+        btn_network.setFixedHeight(44)
         btn_network.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_network.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(0,242,255,0.1); color: {COLOR_ACCENT_CYAN};
-                border: 2px solid {COLOR_ACCENT_CYAN}; border-radius: 8px;
-                font-weight: bold; font-size: 13px;
-            }}
-            QPushButton:hover {{ background: {COLOR_ACCENT_CYAN}; color: black; }}
-        """)
+        btn_network.setStyleSheet(ui_theme.get_neon_action_button())
         btn_network.clicked.connect(self.open_network_setup)
         layout.addWidget(btn_network)
 
         self.content_layout.addWidget(group)
 
-    # ─── Load / Save ─────────────────────────────────────────────────────────
+
+    # ── Load & Save ──────────────────────────────────────────────────────────
     def load_settings(self):
+        """Populate all UI fields from the database."""
         s = self.db_manager.get_shop_settings()
-        if not s:
-            return
 
         # Shop Identity
         self.in_shop_name.setText(s.get("shop_name", ""))
-        self.in_shop_mobile.setText(s.get("mobile", "") or s.get("shop_mobile", ""))
-        self.in_shop_gstin.setText(s.get("gstin", "") or s.get("shop_gstin", ""))
-        self.in_shop_address.setPlainText(s.get("address", "") or s.get("shop_address", ""))
+        self.in_shop_mobile.setText(s.get("shop_mobile", ""))
+        self.in_shop_gstin.setText(s.get("shop_gstin", ""))
+        self.in_shop_address.setPlainText(s.get("shop_address", ""))
+        self.in_admin_pin.setText(s.get("admin_override_pin", ""))
+        try:
+            self.in_max_discount.setValue(int(s.get("max_free_discount", "10")))
+        except Exception:
+            pass
+        try:
+            self.in_daily_budget.setValue(float(s.get("daily_expense_budget", "500")))
+        except Exception:
+            pass
 
-        logo = s.get("logo_path", "")
-        if logo and os.path.exists(logo):
-            self.lbl_logo_status.setText(f"✅  {os.path.basename(logo)}")
-            self.lbl_logo_status.setStyleSheet("color: #00ff41; font-size: 11px;")
-        self._logo_path = logo
+        # Logo
+        logo_path = s.get("logo_path", "")
+        if logo_path and os.path.exists(logo_path):
+            self.lbl_logo_status.setText(f"✅  {os.path.basename(logo_path)}")
+            self.lbl_logo_status.setStyleSheet(ui_theme.get_page_title_style())
+            self._logo_path = logo_path
 
         # Invoice Theme
-        theme = s.get("invoice_theme", "Modern (Blue)")
-        self._current_theme = theme
-        for name, card in self._theme_cards.items():
-            card.set_selected(name == theme)
+        theme_name = s.get("invoice_theme", "Modern (Blue)")
+        self.on_theme_selected(theme_name)
 
-        # Paper size
+        # Paper format
         fmt = s.get("invoice_format", "A4")
-        fmt_map = {"A4": "A4 (Standard)", "A5": "A5 (Half Sheet)", "Thermal_80mm": "Thermal 80mm (POS)"}
-        self.combo_paper.setCurrentText(fmt_map.get(fmt, "A4 (Standard)"))
+        fmt_rev = {"A4": "A4 (Standard)", "A5": "A5 (Half Sheet)", "Thermal_80mm": "Thermal 80mm (POS)"}
+        self.combo_paper.setCurrentText(fmt_rev.get(fmt, "A4 (Standard)"))
 
-        # GST Settings
-        gst_rate = s.get("default_gst_rate", "18")
-        self.combo_gst_rate.setCurrentText(f"{gst_rate}%")
-
+        # GST
+        try:
+            gst_rate = int(s.get("default_gst_rate", "18"))
+            self.combo_gst_rate.setCurrentText(f"{gst_rate}%")
+        except Exception:
+            pass
         gst_mode = s.get("gst_mode", "CGST+SGST")
-        if "IGST" in gst_mode:
-            self.combo_gst_mode.setCurrentText("IGST (Inter-State)")
-        else:
-            self.combo_gst_mode.setCurrentText("CGST + SGST (Intra-State)")
-
-        self.chk_show_gst.setChecked(s.get("show_gst_breakdown", "true") == "true")
+        self.combo_gst_mode.setCurrentText("IGST (Inter-State)" if gst_mode == "IGST" else "CGST + SGST (Local/IntraState)")
+        self.chk_show_gst.setChecked(s.get("show_gst_breakdown", "true") != "false")
         self.chk_show_hsn.setChecked(s.get("show_hsn_on_invoice", "false") == "true")
 
         # Footer
         self.in_footer_text.setText(s.get("invoice_footer_text", "Thank you for your business!"))
-        
+
+        # Payment QR
+        self.chk_payment_qr.setChecked(s.get("payment_qr_enabled", "true") != "false")
+        self.in_payment_upi_id.setText(s.get("payment_upi_id", ""))
+        self.in_payment_display_name.setText(s.get("payment_display_name", ""))
+
         # HSN Rules
         self.load_hsn_rules()
 
     def save_all_settings(self):
-        """Save all settings cards at once"""
+        """Save all settings cards at once."""
         def upd(key, val):
             self.db_manager.update_setting(key, val)
 
-        # Shop Identity
+        # Shop Identity & Security
         upd("shop_name",    self.in_shop_name.text().strip())
         upd("shop_mobile",  self.in_shop_mobile.text().strip())
         upd("shop_gstin",   self.in_shop_gstin.text().strip())
         upd("shop_address", self.in_shop_address.toPlainText().strip())
+        upd("admin_override_pin", self.in_admin_pin.text().strip())
+        upd("max_free_discount", str(self.in_max_discount.value()))
+        upd("daily_expense_budget", str(self.in_daily_budget.value()))
         if hasattr(self, '_logo_path') and self._logo_path:
             upd("logo_path", self._logo_path)
 
@@ -703,34 +780,72 @@ class SettingsPage(QWidget):
         # Footer
         upd("invoice_footer_text", self.in_footer_text.text().strip() or "Thank you for your business!")
 
+        # Payment QR
+        upd("payment_qr_enabled",     "true" if self.chk_payment_qr.isChecked() else "false")
+        upd("payment_upi_id",         self.in_payment_upi_id.text().strip())
+        upd("payment_display_name",   self.in_payment_display_name.text().strip())
+
         ProMessageBox.information(self, "✅ Saved", "All settings saved successfully!\nNew invoices will use the updated configuration.")
+
+    # ── GST live broadcast ────────────────────────────────────────────────────
+    def set_main_window(self, mw):
+        """Called by MainWindow after construction so we can broadcast changes."""
+        self._main_window = mw
+
+    def _on_gst_toggled(self, state):
+        """Instantly notify BillingPage when the GST toggle is flipped."""
+        show = (state == Qt.CheckState.Checked.value)
+        # Save to DB immediately so it persists
+        self.db_manager.update_setting("show_gst_breakdown", "true" if show else "false")
+        # Broadcast to billing page if loaded
+        if self._main_window:
+            self._main_window.notify_billing_gst_change(show)
 
     # ─── Logo ────────────────────────────────────────────────────────────────
     def browse_logo(self):
         fname, _ = QFileDialog.getOpenFileName(self, "Select Logo", "", "Images (*.png *.jpg *.jpeg)")
         if fname:
             try:
-                os.makedirs("logos", exist_ok=True)
-                dest = os.path.join("logos", "logo.png")
+                from path_utils import get_app_data_path  # type: ignore
+                logos_dir = get_app_data_path("logos")
+                dest = os.path.join(logos_dir, "logo.png")
                 if os.path.abspath(fname) != os.path.abspath(dest):
                     shutil.copy(fname, dest)
                 self._logo_path = dest
                 self.lbl_logo_status.setText(f"✅  {os.path.basename(fname)}")
-                self.lbl_logo_status.setStyleSheet("color: #00ff41; font-size: 11px;")
+                self.lbl_logo_status.setStyleSheet(ui_theme.get_page_title_style())
             except Exception as e:
                 ProMessageBox.warning(self, "Logo Error", f"Could not copy logo: {e}")
 
     # ─── Backup helpers ───────────────────────────────────────────────────────
     def manual_backup(self):
-        settings = self.db_manager.get_shop_settings()
-        cloud_enabled = settings.get("backup_cloud_enabled", "false") == "true"
-        cloud_path = settings.get("backup_cloud_path", "") if cloud_enabled else None
-        success, msg = self.backup_mgr.create_backup(cloud_path=cloud_path)
-        if success:
-            ProMessageBox.information(self, "Backup Created", msg)
-            self.lbl_backup_status.setText(f"✓ {msg}")
-        else:
-            ProMessageBox.critical(self, "Backup Failed", msg)
+        """Open a Save File dialog — user picks exactly where to save the backup."""
+        from datetime import datetime
+        default_name = f"SpareERP_Backup_{datetime.now().strftime('%Y-%m-%d_%H-%M')}.db"
+        # Default location: Desktop
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        filepath, _ = QFileDialog.getSaveFileName(
+            self, "Save Backup File",
+            os.path.join(desktop, default_name),
+            "Database Backup (*.db)"
+        )
+        if not filepath:
+            return  # User cancelled
+
+        import shutil as _shutil
+        try:
+            # Also create internal auto-backup silently
+            self.backup_mgr.create_backup()
+            # Copy DB directly to the user-chosen path
+            _shutil.copy2(self.db_manager.db_name, filepath)
+            self.lbl_backup_status.setText(f"✓ Backup saved")
+            ProMessageBox.information(
+                self, "✅ Backup Saved",
+                f"Backup saved successfully to:\n\n{filepath}\n\n"
+                f"Keep this file safe. You can restore it anytime from Settings → Restore Data."
+            )
+        except Exception as e:
+            ProMessageBox.critical(self, "Backup Failed", f"Could not save backup:\n{e}")
 
     def on_cloud_backup_toggled(self, state):
         enabled = state == Qt.CheckState.Checked.value
@@ -744,9 +859,9 @@ class SettingsPage(QWidget):
             if success:
                 self.db_manager.update_setting("backup_cloud_path", result)
                 self.lbl_cloud_path.setText(result)
-                self.lbl_cloud_path.setStyleSheet("color: #00ff41; padding: 10px; background-color: #0a0a0a; border-radius: 6px; font-size: 11px;")
+                self.lbl_cloud_path.setStyleSheet(ui_theme.get_page_title_style())
                 self.lbl_cloud_status.setText("✓ Cloud folder configured successfully")
-                self.lbl_cloud_status.setStyleSheet("color: #00ff41; font-size: 10px; font-style: italic;")
+                self.lbl_cloud_status.setStyleSheet(ui_theme.get_page_title_style())
                 ProMessageBox.information(self, "Success", f"Cloud backup folder:\n{result}")
             else:
                 ProMessageBox.critical(self, "Error", f"Invalid folder:\n{result}")
@@ -758,13 +873,13 @@ class SettingsPage(QWidget):
         cloud_path = settings.get("backup_cloud_path", "")
         if cloud_path:
             self.lbl_cloud_path.setText(cloud_path)
-            self.lbl_cloud_path.setStyleSheet("color: #00ff41; padding: 10px; background-color: #0a0a0a; border-radius: 6px; font-size: 11px;")
+            self.lbl_cloud_path.setStyleSheet(ui_theme.get_page_title_style())
             try:
                 is_valid, status_msg, _ = self.backup_mgr.get_cloud_backup_status(cloud_path)
                 style = "color: #00ff41;" if is_valid else "color: #ff9800;"
                 prefix = "✓" if is_valid else "⚠"
                 self.lbl_cloud_status.setText(f"{prefix} {status_msg}")
-                self.lbl_cloud_status.setStyleSheet(f"{style} font-size: 10px; font-style: italic;")
+                self.lbl_cloud_status.setStyleSheet(ui_theme.get_page_title_style())
             except Exception:
                 pass
 
@@ -772,15 +887,37 @@ class SettingsPage(QWidget):
         dialog = QDialog(self)
         dialog.setWindowTitle("♻️ Restore Backup")
         dialog.setModal(True)
-        dialog.setMinimumSize(600, 400)
+        dialog.setMinimumSize(620, 440)
         dialog.setStyleSheet("background-color: #080a10;")
         layout = QVBoxLayout(dialog)
         layout.setContentsMargins(20, 20, 20, 20)
-        layout.setSpacing(15)
+        layout.setSpacing(12)
 
-        title = QLabel("Select a backup to restore:")
-        title.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 16px; font-weight: bold;")
+        title = QLabel("♻️ Restore Data")
+        title.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(title)
+
+        # ── Option 1: Load from any file on disk ───────────────────────────
+        browse_frame = QFrame()
+        browse_frame.setStyleSheet("background: #0d1218; border: 1px solid #1e3050; border-radius: 8px; padding: 4px;")
+        browse_lay = QHBoxLayout(browse_frame)
+        browse_lay.setContentsMargins(12, 8, 12, 8)
+        lbl_browse = QLabel("📂  Restore from a saved backup file (Desktop, USB, etc.):")
+        lbl_browse.setStyleSheet(ui_theme.get_page_title_style())
+        browse_lay.addWidget(lbl_browse, 1)
+        btn_browse_file = QPushButton("📂  Browse File...")
+        btn_browse_file.setFixedHeight(36)
+        btn_browse_file.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_browse_file.setStyleSheet(ui_theme.get_neon_action_button())
+        btn_browse_file.clicked.connect(lambda: self._restore_from_file(dialog))
+        browse_lay.addWidget(btn_browse_file)
+        layout.addWidget(browse_frame)
+
+        # ── Option 2: Pick from internal auto-backups ──────────────────────
+        sep = QLabel("── or pick from recent auto-backups ──")
+        sep.setStyleSheet(ui_theme.get_page_title_style())
+        sep.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        layout.addWidget(sep)
 
         backup_list = QListWidget()
         backup_list.setStyleSheet(f"""
@@ -792,7 +929,7 @@ class SettingsPage(QWidget):
 
         backups = self.backup_mgr.get_backups()
         if not backups:
-            no_backup_item = QListWidgetItem("No backups available")
+            no_backup_item = QListWidgetItem("No auto-backups found. Use 'Create Backup' first.")
             no_backup_item.setFlags(Qt.ItemFlag.NoItemFlags)
             backup_list.addItem(no_backup_item)
         else:
@@ -803,23 +940,23 @@ class SettingsPage(QWidget):
                 backup_list.addItem(item)
         layout.addWidget(backup_list)
 
-        warning = QLabel("⚠️ WARNING: This will replace your current database. A safety backup will be created first.")
-        warning.setStyleSheet("color: #ff9800; font-size: 11px; font-style: italic; padding: 10px; background-color: rgba(255,152,0,0.1); border-radius: 4px;")
+        warning = QLabel("⚠️ WARNING: Restoring will replace ALL current data. A safety copy is made automatically first.")
+        warning.setStyleSheet(ui_theme.get_page_title_style())
         warning.setWordWrap(True)
         layout.addWidget(warning)
 
         btn_row = QHBoxLayout()
         btn_cancel = QPushButton("✖️  Cancel")
-        btn_cancel.setFixedHeight(40)
+        btn_cancel.setFixedHeight(36)
         btn_cancel.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_cancel.setStyleSheet("background-color: #333; color: white; border-radius: 6px; font-weight: bold;")
+        btn_cancel.setStyleSheet(ui_theme.get_cancel_button_style())
         btn_cancel.clicked.connect(dialog.reject)
         btn_row.addWidget(btn_cancel)
 
         btn_restore = QPushButton("♻️  RESTORE SELECTED")
-        btn_restore.setFixedHeight(40)
+        btn_restore.setFixedHeight(36)
         btn_restore.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_restore.setStyleSheet("background-color: #ff9800; color: black; border-radius: 6px; font-weight: bold;")
+        btn_restore.setStyleSheet(ui_theme.get_amber_button_style())
         btn_restore.clicked.connect(lambda: self._perform_restore(backup_list, dialog))
         btn_row.addWidget(btn_restore)
         layout.addLayout(btn_row)
@@ -828,7 +965,7 @@ class SettingsPage(QWidget):
     def _perform_restore(self, backup_list, dialog):
         selected = backup_list.selectedItems()
         if not selected:
-            ProMessageBox.warning(self, "No Selection", "Please select a backup to restore.")
+            ProMessageBox.warning(self, "No Selection", "Please select a backup from the list, or use 'Browse File...' to load one from disk.")
             return
         fname = selected[0].data(Qt.ItemDataRole.UserRole)
         if ProMessageBox.question(self, "Confirm Restore", f"Restore from:\n{fname}\n\nThis will replace all current data!"):
@@ -838,6 +975,35 @@ class SettingsPage(QWidget):
                 dialog.accept()
             else:
                 ProMessageBox.critical(self, "Restore Failed", msg)
+
+    def _restore_from_file(self, parent_dialog):
+        """Let user pick any .db backup file from disk (Desktop, USB, etc.) and restore it."""
+        import shutil as _shutil
+        desktop = os.path.join(os.path.expanduser("~"), "Desktop")
+        filepath, _ = QFileDialog.getOpenFileName(
+            self, "Select Backup File to Restore",
+            desktop,
+            "Database Backup (*.db)"
+        )
+        if not filepath:
+            return
+        if not ProMessageBox.question(
+            self, "Confirm Restore",
+            f"Restore from:\n{filepath}\n\nThis will replace ALL current data!\nA safety copy will be made first."
+        ):
+            return
+        try:
+            # Safety copy first
+            self.backup_mgr.create_backup()
+            # Copy chosen file over the live database
+            _shutil.copy2(filepath, self.db_manager.db_name)
+            ProMessageBox.information(
+                self, "✅ Restore Complete",
+                f"Data restored successfully from:\n{filepath}\n\nPlease restart the application."
+            )
+            parent_dialog.accept()
+        except Exception as e:
+            ProMessageBox.critical(self, "Restore Failed", f"Could not restore backup:\n{e}")
 
     # ─── Network ─────────────────────────────────────────────────────────────
     def open_network_setup(self):
@@ -854,11 +1020,11 @@ class SettingsPage(QWidget):
                 if mode == "SERVER":
                     ip = db_config.get_local_ip()
                     self.lbl_network_mode.setText(f"🖥️ SERVER MODE  •  IP: {ip}  •  PC: {db_config.get_computer_name()}")
-                    self.lbl_network_mode.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-weight: bold; font-size: 13px; padding: 12px; background-color: #0a0a0a; border-radius: 8px; border: 1px solid #222;")
+                    self.lbl_network_mode.setStyleSheet(ui_theme.get_page_title_style())
                 elif mode == "CLIENT":
                     server = config.get("server_ip", "?")
                     self.lbl_network_mode.setText(f"💻 CLIENT MODE  •  Server: {server}")
-                    self.lbl_network_mode.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-weight: bold; font-size: 13px; padding: 12px; background-color: #0a0a0a; border-radius: 8px; border: 1px solid #222;")
+                    self.lbl_network_mode.setStyleSheet(ui_theme.get_page_title_style())
 
     # ── 7. HSN/GST Rules Engine (Hybrid v2.0) ──────────────────────────────────
     def create_hsn_engine_card(self):
@@ -882,9 +1048,11 @@ class SettingsPage(QWidget):
         btn_add = QPushButton("➕ Add Rule")
         btn_edit = QPushButton("✏️ Edit Rule")
         btn_delete = QPushButton("🗑️ Delete")
-        btn_sync = QPushButton("🔄 Sync/Seed Data")
+        btn_sync = QPushButton("🔄 Default Sync")
+        btn_import_hsn = QPushButton("📥 Import HSN CSV")
+        btn_import_sac = QPushButton("📥 Import SAC CSV")
         
-        for btn in [btn_add, btn_edit, btn_delete, btn_sync]:
+        for btn in [btn_add, btn_edit, btn_delete, btn_sync, btn_import_hsn, btn_import_sac]:
             btn.setFixedHeight(38)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(ui_theme.get_secondary_button_style())
@@ -894,6 +1062,8 @@ class SettingsPage(QWidget):
         btn_edit.clicked.connect(self.edit_hsn_rule_dialog)
         btn_delete.clicked.connect(self.delete_hsn_rule_logic)
         btn_sync.clicked.connect(self.sync_hsn_master_logic)
+        btn_import_hsn.clicked.connect(lambda: self._import_csv_logic("HSN_MSTR.csv", "HSN Rules"))
+        btn_import_sac.clicked.connect(lambda: self._import_csv_logic("SAC_MSTR.csv", "SAC Rules"))
         
         layout.addLayout(btn_row)
         self.content_layout.addWidget(group)
@@ -999,3 +1169,38 @@ class SettingsPage(QWidget):
             self.db_manager.seed_hsn_master()
             self.load_hsn_rules()
             ProMessageBox.information(self, "Success", "HSN rules synced with reference data.")
+
+    def _import_csv_logic(self, target_filename, type_name):
+        """Robust modular logic to handle CSV imports strictly."""
+        fname, _ = QFileDialog.getOpenFileName(self, f"Select {type_name} CSV File", "", "CSV Files (*.csv)")
+        
+        if not fname:
+            return  # User cancelled
+
+        if not fname.lower().endswith(".csv"):
+            ProMessageBox.critical(self, "Import Failed", "Selected file must be a .csv file.")
+            return
+
+        try:
+            # 1. Directory Check
+            base_dir = os.path.dirname(self.db_manager.db_name)
+            data_dir = os.path.join(base_dir, "data") if os.path.basename(base_dir) != "data" else base_dir
+            os.makedirs(data_dir, exist_ok=True)
+            
+            # 2. File Validation and Copy
+            dest_path = os.path.join(data_dir, target_filename)
+            shutil.copy2(fname, dest_path)
+            
+            # 3. Synchronous Database Update
+            if hasattr(self.db_manager, 'seed_tax_masters_from_csv'):
+                self.db_manager.seed_tax_masters_from_csv()
+            else:
+                raise AttributeError("Method 'seed_tax_masters_from_csv' not found in database manager.")
+                
+            ProMessageBox.information(self, "Success", f"Successfully imported and synced {type_name} from:\n{os.path.basename(fname)}")
+            
+        except PermissionError:
+            ProMessageBox.critical(self, "Permission Denied", "We cannot access the selected file or target directory.\n\nMake sure the CSV is NOT open in Excel or another program, and try again.")
+        except Exception as e:
+            ProMessageBox.critical(self, "Critical Error", f"Failed to import CSV:\n{e}")
+

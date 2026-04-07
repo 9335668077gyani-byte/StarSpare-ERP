@@ -3,13 +3,16 @@ import shutil
 import os
 from datetime import datetime
 from logger import app_logger
+from path_utils import get_app_data_path  # type: ignore
 
 class BackupManager:
     """Auto-Backup system for database protection (Quick Win #3)"""
     
     def __init__(self, db_path):
         self.db_path = db_path
-        self.backup_dir = os.path.join(os.path.dirname(db_path), "data", "backups")
+        # Use get_app_data_path so the backup dir is always under AppData
+        # (avoids doubled "data/data/backups" when db_path is already inside "data/")
+        self.backup_dir = get_app_data_path(os.path.join("data", "backups"))
         
         # Create backup directory if it doesn't exist
         if not os.path.exists(self.backup_dir):

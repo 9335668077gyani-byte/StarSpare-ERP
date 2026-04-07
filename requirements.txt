@@ -3,3 +3,5 @@ pandas
 openpyxl
 PyQt6-Charts
 reportlab
+qrcode[pil]
+Pillow

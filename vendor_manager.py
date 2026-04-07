@@ -52,11 +52,11 @@ class VendorManagerWidget(QWidget):
         # Buttons
         btn_layout = QHBoxLayout()
         self.btn_new = QPushButton("New Vendor")
-        self.btn_new.setStyleSheet(STYLE_NEON_BUTTON)
+        self.btn_new.setStyleSheet(ui_theme.get_neon_action_button())
         self.btn_new.clicked.connect(self.clear_form)
         
         self.btn_delete = QPushButton("Delete Selected")
-        self.btn_delete.setStyleSheet(STYLE_DANGER_BUTTON)
+        self.btn_delete.setStyleSheet(ui_theme.get_danger_button_style())
         self.btn_delete.clicked.connect(self.delete_vendor)
         
         btn_layout.addWidget(self.btn_new)
@@ -79,27 +79,27 @@ class VendorManagerWidget(QWidget):
         
         self.inp_name = QLineEdit()
         self.inp_name.setPlaceholderText("Official Business Name")
-        self.inp_name.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_name.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.inp_rep = QLineEdit()
         self.inp_rep.setPlaceholderText("Representative Name")
-        self.inp_rep.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_rep.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.inp_phone = QLineEdit()
         self.inp_phone.setPlaceholderText("Contact Number")
-        self.inp_phone.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_phone.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.inp_address = QLineEdit()
         self.inp_address.setPlaceholderText("Billing Address")
-        self.inp_address.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_address.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.inp_gstin = QLineEdit()
         self.inp_gstin.setPlaceholderText("GSTIN / Tax ID")
-        self.inp_gstin.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_gstin.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.inp_notes = QLineEdit()
         self.inp_notes.setPlaceholderText("Additional Notes")
-        self.inp_notes.setStyleSheet(STYLE_INPUT_CYBER)
+        self.inp_notes.setStyleSheet(ui_theme.get_lineedit_style())
         
         self.form_layout.addRow("Name *", self.inp_name)
         self.form_layout.addRow("Rep Name", self.inp_rep)
@@ -113,7 +113,7 @@ class VendorManagerWidget(QWidget):
         
         # Action Buttons
         self.btn_save = QPushButton("SAVE VENDOR")
-        self.btn_save.setStyleSheet(STYLE_NEON_BUTTON)
+        self.btn_save.setStyleSheet(ui_theme.get_neon_action_button())
         self.btn_save.clicked.connect(self.save_vendor)
         right_layout.addWidget(self.btn_save)
         

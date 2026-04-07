@@ -1,16 +1,21 @@
-from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-                             QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame, 
-                             QDialog, QFormLayout, QDialogButtonBox, QAbstractItemView, QFileDialog, QProgressBar, QCheckBox, QComboBox, QStyledItemDelegate, QStyle, QInputDialog)
+from PyQt6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
+                             QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QFrame,
+                             QDialog, QFormLayout, QDialogButtonBox, QAbstractItemView, QFileDialog,
+                             QProgressBar, QCheckBox, QComboBox, QStyledItemDelegate, QStyle,
+                             QInputDialog, QMenu, QApplication)
 import pandas as pd
 import openpyxl
 from PyQt6.QtCore import Qt, QTimer, QThread, pyqtSignal, QRect, QPointF, QSize, QEvent
 from PyQt6.QtGui import QColor, QBrush, QPainter, QPen, QFont, QLinearGradient, QFontMetrics
 from styles import (COLOR_SURFACE, COLOR_ACCENT_CYAN, COLOR_ACCENT_GREEN, COLOR_ACCENT_YELLOW, COLOR_TEXT_PRIMARY, COLOR_ACCENT_RED,
-                   STYLE_NEON_BUTTON, STYLE_INPUT_CYBER, STYLE_TABLE_CYBER, STYLE_GLASS_PANEL, STYLE_ACTION_HOLO,
+                   STYLE_INPUT_CYBER, STYLE_TABLE_CYBER, STYLE_GLASS_PANEL, STYLE_ACTION_HOLO,
                    DIM_BUTTON_HEIGHT, DIM_INPUT_HEIGHT, DIM_MARGIN_STD, DIM_SPACING_STD, DIM_ICON_SIZE)
+import ui_theme
 from custom_components import ProMessageBox, ProDialog, ReactorStatCard, AINexusNode
 from vendor_manager import VendorManagerDialog
 from logger import app_logger
+from hsn_sync_engine import HsnSyncDialog
+from vehicle_compat_engine import VehicleCompatDialog
 import os
 from datetime import datetime
 import webbrowser
@@ -107,28 +112,28 @@ class BladeDelegate(QStyledItemDelegate):
         # Color Logic
         if col_type == 'id':
             if is_low_stock:
-                fill_color = QColor(255, 0, 0, 40)
-                side_border_color = QColor(255, 0, 0, 200)
-                text_color = QColor(255, 100, 100)
+                fill_color = QColor(255, 0, 0, 25)
+                side_border_color = QColor(255, 60, 60, 180)
+                text_color = QColor(255, 120, 120)
             else:
-                fill_color = QColor(0, 68, 255, 40)
-                side_border_color = QColor(0, 242, 255)
+                fill_color = QColor(0, 242, 255, 12)
+                side_border_color = QColor(0, 242, 255, 180)
                 text_color = QColor(0, 242, 255)
         
         elif col_type == 'name':
             if is_low_stock:
-                fill_color = QColor(255, 0, 0, 30)
-                side_border_color = QColor(255, 0, 0, 150)
-                text_color = QColor(255, 150, 150)
+                fill_color = QColor(255, 0, 0, 15)
+                side_border_color = QColor(255, 0, 0, 80)
+                text_color = QColor(255, 180, 180)
             else:
-                fill_color = QColor(0, 255, 208, 20)
-                side_border_color = QColor(0, 255, 208, 100)
-                text_color = QColor(255, 255, 255)
+                fill_color = QColor(255, 255, 255, 6)
+                side_border_color = QColor(255, 255, 255, 20)
+                text_color = QColor(230, 230, 230)
 
         elif col_type == 'price':
-            fill_color = QColor(255, 170, 0, 20)
-            side_border_color = QColor(255, 170, 0)
-            text_color = QColor(255, 215, 0)
+            fill_color = QColor(255, 170, 0, 12)
+            side_border_color = QColor(255, 170, 0, 150)
+            text_color = QColor(255, 210, 80)
 
         elif col_type == 'stock':
             # Background handled by Progress Bar logic below, but set base here
@@ -175,30 +180,51 @@ class BladeDelegate(QStyledItemDelegate):
             max_val = int(data.get('max_val', 100))
             ratio = min(1.0, val / max(1, max_val))
             
-            # Pulse Low Stock
-            bar_color = QColor(0, 255, 0)
-            if val <= 5: # Critical
-                pulse_alpha = int(100 + (155 * (self.pulse_frame / 20.0)))
-                bar_color = QColor(255, 0, 0, pulse_alpha)
-            
-            # Draw Bar Background
-            bar_rect = QRect(rect.left() + 5, rect.top() + 8, rect.width() - 10, rect.height() - 16)
+            # ── Cell-fill: the background IS the bar ─────────────────────
+            # The filled portion of the cell is color-washed; the rest stays dark.
+            # Zero glow bleed, zero visual competition with adjacent columns.
+
+            if val <= 3:
+                r, g, b = 255, 60, 60
+                pulse = int(15 + 12 * abs((self.pulse_frame % 40) - 20) / 20.0)
+            elif val <= 8:
+                r, g, b = 255, 160, 0
+                pulse = 18
+            else:
+                r, g, b = 0, 200, 80
+                pulse = 16
+
+            fill_w = int(rect.width() * ratio)
+
+            # Dark empty zone (full cell first)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(30, 30, 30))
-            painter.drawRect(bar_rect)
-            
-            # Draw Progress
-            prog_w = int(bar_rect.width() * ratio)
-            if prog_w > 0:
-                painter.setBrush(bar_color)
-                painter.drawRect(bar_rect.left(), bar_rect.top(), prog_w, bar_rect.height())
-                
-            # Draw Text
-            painter.setPen(Qt.GlobalColor.black)
-            font_qty = painter.font()
-            font_qty.setBold(True)
-            painter.setFont(font_qty)
+            painter.setBrush(QColor(14, 16, 26))
+            painter.drawRect(rect)
+
+            # Color fill zone (left portion = filled stock)
+            if fill_w > 0:
+                fill_rect = QRect(rect.left(), rect.top(), fill_w, rect.height())
+                grad = QLinearGradient(QPointF(fill_rect.left(), 0), QPointF(fill_rect.right(), 0))
+                grad.setColorAt(0.0, QColor(r, g, b, 0))       # transparent start
+                grad.setColorAt(0.6, QColor(r, g, b, pulse))   # build up
+                grad.setColorAt(1.0, QColor(r, g, b, pulse + 10))  # slightly brighter edge
+                painter.setBrush(grad)
+                painter.drawRect(fill_rect)
+
+            # Bright leading-edge line at fill boundary
+            if 0 < fill_w < rect.width():
+                painter.setPen(QPen(QColor(r, g, b, 90), 1))
+                painter.drawLine(rect.left() + fill_w, rect.top() + 3,
+                                 rect.left() + fill_w, rect.bottom() - 3)
+
+            # Number centered, bold, matching color
+            painter.setPen(QColor(r, g, b))
+            nf = QFont("Segoe UI", 9)
+            nf.setBold(True)
+            painter.setFont(nf)
             painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(val))
+
+
 
         # 3. ACTION BUTTONS (Col Actions)
         elif col_type == 'actions':
@@ -234,6 +260,12 @@ class BladeDelegate(QStyledItemDelegate):
             is_edited = data.get('is_edited', False)
             if col_type == 'name':
                 self._draw_name_with_tags_extended(painter, rect, text, vehicle_tags, is_new, is_edited)
+            elif col_type == 'id':
+                self._draw_3d_chip(painter, rect, text, text_color,
+                                   QColor(0, 242, 255, 18), bold=True)
+            elif col_type == 'price' and text:
+                self._draw_3d_chip(painter, rect, f"₹ {text}", text_color,
+                                   QColor(255, 170, 0, 12), bold=True)
             elif col_type == 'description':
                 # Parse comma separated tags
                 tags = [t.strip() for t in text.split(',') if t.strip()]
@@ -241,42 +273,69 @@ class BladeDelegate(QStyledItemDelegate):
                      self._draw_tags_only(painter, rect, tags)
                 else:
                      painter.drawText(rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+            elif col_type == 'compat':
+                # Render compatibility text as amber pills
+                if text and text not in ('None', 'N/A', '-', ''):
+                    self._draw_compat_pills(painter, rect, text)
+                else:
+                    painter.setPen(QColor('#444'))
+                    painter.drawText(rect.adjusted(5,0,0,0), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, '—')
+            elif col_type == 'vendor' and text and text not in ('None', ''):
+                v_color = self._get_vendor_color(text)
+                self._draw_3d_chip(painter, rect, text, v_color,
+                                   QColor(v_color.red(), v_color.green(), v_color.blue(), 20), bold=False)
             else:
                  align = Qt.AlignmentFlag.AlignCenter
-                 if col_type in ['name', 'vendor', 'description']: 
-                     align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft
-                 elif col_type == 'price':
-                     align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight
-                 
-                 draw_rect = QRect(rect)
-                 # Add padding for text
-                 if col_type in ['name', 'vendor', 'description']: 
-                     draw_rect.adjust(5, 0, 0, 0)
-                 elif col_type == 'price':
-                     draw_rect.adjust(0, 0, -5, 0)
-                     
-                 # VENDOR GLOW LOGIC
-                 if col_type == 'vendor' and text:
-                     v_color = self._get_vendor_color(text)
-                     
-                     # 1. Glow Background
-                     painter.setPen(Qt.PenStyle.NoPen)
-                     painter.setBrush(QColor(v_color.red(), v_color.green(), v_color.blue(), 25))
-                     # Smaller pill shape for the tag
-                     # Measure text width to make the pill fit? Or just fill cell? 
-                     # User said "every vender name have glowing color coding", usually implies a tag look.
-                     # Let's make it a pill around the text.
-                     fm = painter.fontMetrics()
-                     t_w = fm.horizontalAdvance(text)
-                     pill_rect = QRect(draw_rect.left(), draw_rect.center().y() - 10, t_w + 10, 20)
-                     painter.drawRoundedRect(pill_rect, 4, 4)
-                     
-                     # 2. Text Color
-                     painter.setPen(v_color)
-                     
+                 draw_rect = QRect(rect).adjusted(5, 0, -5, 0)
                  painter.drawText(draw_rect, align, text)
 
         painter.restore()
+
+    def _draw_3d_chip(self, painter, rect, text, text_color, bg_color, bold=False):
+        """Draw text inside a floating 3D raised chip with bevel highlight/shadow."""
+        fm = painter.fontMetrics()
+        chip_font = QFont("Segoe UI", 8)
+        chip_font.setBold(bold)
+        painter.setFont(chip_font)
+        fm = QFontMetrics(chip_font)
+        tw = fm.horizontalAdvance(text)
+        chip_w = min(tw + 16, rect.width() - 8)
+        chip_h = rect.height() - 8
+        chip_x = rect.left() + 4
+        chip_y = rect.top() + 4
+        chip_rect = QRect(chip_x, chip_y, chip_w, chip_h)
+
+        # Base fill
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(bg_color)
+        painter.drawRoundedRect(chip_rect, 4, 4)
+
+        # Top-left highlight (makes it look raised)
+        hl = QColor(255, 255, 255, 30)
+        painter.setPen(QPen(hl, 1))
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawLine(chip_rect.left()+2, chip_rect.top()+1,
+                         chip_rect.right()-2, chip_rect.top()+1)     # top edge
+        painter.drawLine(chip_rect.left()+1, chip_rect.top()+2,
+                         chip_rect.left()+1, chip_rect.bottom()-2)   # left edge
+
+        # Bottom-right shadow (depth)
+        sh = QColor(0, 0, 0, 60)
+        painter.setPen(QPen(sh, 1))
+        painter.drawLine(chip_rect.left()+2, chip_rect.bottom()-1,
+                         chip_rect.right()-2, chip_rect.bottom()-1)  # bottom edge
+        painter.drawLine(chip_rect.right()-1, chip_rect.top()+2,
+                         chip_rect.right()-1, chip_rect.bottom()-2)  # right edge
+
+        # Outer subtle border
+        painter.setPen(QPen(QColor(text_color.red(), text_color.green(),
+                                   text_color.blue(), 50), 1))
+        painter.drawRoundedRect(chip_rect.adjusted(0,0,-1,-1), 4, 4)
+
+        # Elide text if it doesn't fit inside the chip
+        display_text = fm.elidedText(text, Qt.TextElideMode.ElideRight, chip_w - 8)
+        painter.setPen(text_color)
+        painter.drawText(chip_rect, Qt.AlignmentFlag.AlignCenter, display_text)
 
     def _get_vendor_color(self, name):
         if not name: return QColor(200, 200, 200)
@@ -332,72 +391,70 @@ class BladeDelegate(QStyledItemDelegate):
             
             x += w + 4
 
-    def _draw_name_with_tags_extended(self, painter, rect, text, tags, is_new, is_edited):
+    def _draw_compat_pills(self, painter, rect, text):
+        """Draw vehicle compatibility text as amber semi-transparent pills in the cell."""
+        vehicles = [v.strip() for v in text.split(',') if v.strip()]
+        x = rect.left() + 5
+        y = rect.top() + 4
+
+        painter.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
         fm = painter.fontMetrics()
-        text_w = fm.horizontalAdvance(text)
-        start_x = rect.left() + 10
-        
-        # Draw Name
-        name_r = QRect(start_x, rect.y(), text_w, rect.height())
-        painter.drawText(name_r, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
-        
-        current_x = start_x + text_w + 10
-        
-        # Draw NEW Badge
-        if is_new:
-            badge_w = 35
-            br = QRect(current_x, rect.y() + (rect.height()-16)//2, badge_w, 16)
-            
-            # Glowing Green
+        AMBER = QColor("#ffaa00")
+
+        for v in vehicles:
+            w = fm.horizontalAdvance(v) + 10
+            h = 16
+            if x + w > rect.right():
+                break
+            pill = QRect(x, y, w, h)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(0, 255, 0, 50))
-            painter.drawRoundedRect(br, 4, 4)
-            
-            painter.setPen(QColor(0, 255, 0))
-            painter.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
-            painter.drawText(br, Qt.AlignmentFlag.AlignCenter, "NEW")
-            
-            current_x += badge_w + 5
-            
-        # Draw EDITED Badge
-        if is_edited:
-            badge_w = 45
-            br = QRect(current_x, rect.y() + (rect.height()-16)//2, badge_w, 16)
-            
-            # Glowing Cyan
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(0, 229, 255, 50))
-            painter.drawRoundedRect(br, 4, 4)
-            
-            painter.setPen(QColor(0, 229, 255))
-            painter.setFont(QFont("Segoe UI", 7, QFont.Weight.Bold))
-            painter.drawText(br, Qt.AlignmentFlag.AlignCenter, "EDITED")
-            
-            current_x += badge_w + 5
-        
-        badge_font = QFont(painter.font())
-        badge_font.setPointSize(7)
+            painter.setBrush(QColor(255, 170, 0, 35))
+            painter.drawRoundedRect(pill, 4, 4)
+            painter.setPen(AMBER)
+            painter.drawText(pill, Qt.AlignmentFlag.AlignCenter, v)
+            x += w + 4
+
+    def _draw_name_with_tags_extended(self, painter, rect, text, tags, is_new, is_edited):
+        # Draw the part name - left aligned, vertically centered
+        name_font = QFont("Segoe UI", 9)
+        name_font.setBold(False)
+        painter.setFont(name_font)
+        painter.setPen(QColor(220, 220, 220))
+
+        fm = painter.fontMetrics()
+        text_w = min(fm.horizontalAdvance(text), 200)  # cap name width
+        name_rect = QRect(rect.left() + 8, rect.top(), text_w + 4, rect.height())
+        painter.drawText(name_rect, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, text)
+
+        # Badges flow inline after the name text
+        badge_font = QFont("Segoe UI", 7)
         badge_font.setBold(True)
         painter.setFont(badge_font)
         badge_fm = painter.fontMetrics()
-        
-        for tag in tags:
-            bw = badge_fm.horizontalAdvance(tag) + 12
-            # Simple Color Hash
-            kc = QColor(COLOR_ACCENT_CYAN)
-            if "HONDA" in tag: kc = QColor("#ff9900")
-            elif "TVS" in tag: kc = QColor("#00ff00")
-            
-            br = QRect(current_x, rect.y() + (rect.height()-16)//2, bw, 16)
+
+        current_x = rect.left() + 8 + text_w + 8
+        badge_h = 14
+        badge_y = rect.center().y() - badge_h // 2
+
+        def _draw_badge(label, bg_color, fg_color):
+            nonlocal current_x
+            bw = badge_fm.horizontalAdvance(label) + 8
+            if current_x + bw > rect.right() - 4:
+                return  # clip, don't overflow
+            br = QRect(current_x, badge_y, bw, badge_h)
             painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor(kc.red(), kc.green(), kc.blue(), 40))
-            painter.drawRect(br)
-            
-            painter.setPen(kc)
-            painter.setBrush(Qt.BrushStyle.NoBrush)
-            painter.drawRect(br)
-            painter.drawText(br, Qt.AlignmentFlag.AlignCenter, tag)
-            current_x += bw + 5
+            painter.setBrush(bg_color)
+            painter.drawRoundedRect(br, 3, 3)
+            painter.setPen(fg_color)
+            painter.drawText(br, Qt.AlignmentFlag.AlignCenter, label)
+            current_x += bw + 4
+
+        if is_new:
+            _draw_badge("NEW", QColor(0, 200, 80, 55), QColor(0, 255, 100))
+        if is_edited:
+            _draw_badge("EDITED", QColor(0, 170, 255, 50), QColor(0, 229, 255))
+        if tags:
+            _draw_badge(f"🚗 {len(tags)}", QColor(160, 0, 200, 45), QColor(200, 80, 255))
 
     def editorEvent(self, event, model, option, index):
         """Handle mouse clicks for interactive elements"""
@@ -440,16 +497,133 @@ class BladeDelegate(QStyledItemDelegate):
                         
         return False
 
+class CatalogBridgeThread(QThread):
+    data_loaded = pyqtSignal(dict, set, dict) 
+    
+    def __init__(self, db_manager):
+        super().__init__()
+        self.db_manager = db_manager
+        
+    def run(self):
+        try:
+            s = self.db_manager.get_shop_settings() or {}
+            cat_db = s.get("nexses_catalog_db", "")
+            import os
+            from path_utils import get_resource_path  # type: ignore
+            if not cat_db or not os.path.exists(cat_db):
+                cat_db = get_resource_path("nexses_ecatalog.db")
+                
+            if not os.path.exists(cat_db):
+                self.data_loaded.emit({}, set(), {})
+                return
+                
+            import sqlite3
+            conn = sqlite3.connect(cat_db, check_same_thread=False)
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT cm.part_code, vm.segment, vm.model_name, pm.category 
+                FROM compatibility_map cm
+                JOIN vehicles_master vm ON cm.vehicle_id = vm.vehicle_id
+                JOIN parts_master pm ON cm.part_code = pm.part_code
+            """)
+            rows = cursor.fetchall()
+            
+            mapping = {}
+            categories = set()
+            hierarchy = {}
+            
+            for part_code, segment, model_name, section in rows:
+                pc = str(part_code).strip().upper()
+                seg = str(segment).strip().upper() if segment else "UNCATEGORIZED"
+                mod = str(model_name).strip().upper() if model_name else "UNKNOWN"
+                sec = str(section).strip().upper() if section else "GENERAL"
+                
+                if pc not in mapping:
+                    mapping[pc] = []
+                mapping[pc].append((seg, mod, sec))
+                
+                categories.add(seg)
+                if seg not in hierarchy:
+                    hierarchy[seg] = {}
+                if mod not in hierarchy[seg]:
+                    hierarchy[seg][mod] = set()
+                hierarchy[seg][mod].add(sec)
+                
+            conn.close()
+            self.data_loaded.emit(mapping, categories, hierarchy)
+        except Exception as e:
+            app_logger.error(f"CatalogBridge error: {e}")
+            self.data_loaded.emit({}, set(), {})
 
 class DataLoadThread(QThread):
     data_loaded = pyqtSignal(list)
     def __init__(self, db_manager):
         super().__init__()
         self.db_manager = db_manager
+
+    def _load_catalog_compat(self) -> dict:
+        """
+        Load a part_code -> 'Model1, Model2, ...' mapping from nexses_ecatalog.db.
+        Returns empty dict if catalog DB is not available.
+        """
+        try:
+            import sqlite3, os
+            s = self.db_manager.get_shop_settings() or {}
+            cat_db = s.get("nexses_catalog_db", "")
+            from path_utils import get_resource_path  # type: ignore
+            if not cat_db or not os.path.exists(cat_db):
+                cat_db = get_resource_path("nexses_ecatalog.db")
+            if not os.path.exists(cat_db):
+                return {}
+            conn = sqlite3.connect(cat_db, check_same_thread=False)
+            conn.row_factory = sqlite3.Row
+            cur = conn.cursor()
+            cur.execute("""
+                SELECT cm.part_code,
+                       vm.model_name || CASE WHEN vm.variant != '' THEN ' ' || vm.variant ELSE '' END AS label
+                FROM compatibility_map cm
+                JOIN vehicles_master vm ON vm.vehicle_id = cm.vehicle_id
+                ORDER BY cm.part_code, vm.model_name
+            """)
+            compat: dict = {}
+            for row in cur.fetchall():
+                pc = str(row["part_code"]).strip().upper()
+                lbl = str(row["label"]).strip()
+                if lbl and lbl not in ('*', '**', '***', '****', '*****'):
+                    compat.setdefault(pc, [])
+                    if lbl not in compat[pc]:
+                        compat[pc].append(lbl)
+            conn.close()
+            return compat
+        except Exception as e:
+            app_logger.warning(f"[DataLoadThread] catalog compat load failed: {e}")
+            return {}
+
     def run(self):
         try:
             rows = self.db_manager.get_all_parts()
-            self.data_loaded.emit(rows)
+            # Enrich rows with catalog-based vehicle compatibility
+            cat_compat = self._load_catalog_compat()
+            if cat_compat:
+                enriched = []
+                for r in rows:
+                    part_id = str(r[0]).strip().upper()
+                    catalog_tags = cat_compat.get(part_id, [])
+                    # r[9] is the compatibility column; prefer catalog over manual if catalog has data
+                    existing = str(r[9]).strip() if len(r) > 9 and r[9] and str(r[9]) not in ('None','') else ''
+                    if catalog_tags:
+                        merged_tags = ', '.join(catalog_tags)
+                    else:
+                        merged_tags = existing
+                    # Rebuild the row as a list to mutate index 9
+                    row_list = list(r)
+                    while len(row_list) <= 9:
+                        row_list.append('')
+                    row_list[9] = merged_tags
+                    enriched.append(tuple(row_list))
+                self.data_loaded.emit(enriched)
+            else:
+                self.data_loaded.emit(rows)
         except Exception as e:
             app_logger.error(f"Data load thread error: {e}")
             self.data_loaded.emit([])
@@ -459,7 +633,7 @@ class AddPartDialog(QDialog):
         super().__init__(parent)
         self.db_manager = db_manager
         self.setWindowTitle("Add/Edit Part")
-        self.setStyleSheet(f"background-color: #1a1a2e; color: {COLOR_TEXT_PRIMARY};")
+        self.setStyleSheet(ui_theme.get_dialog_style())
         self.layout = QFormLayout(self)
         self.part_data = part_data
 
@@ -481,7 +655,7 @@ class AddPartDialog(QDialog):
         for w in [self.in_id, self.in_name, self.in_desc, self.in_price, self.in_qty, 
                   self.in_rack, self.in_col, self.in_reorder, self.in_vendor, 
                   self.in_compat, self.in_category, self.in_hsn, self.in_gst]:
-            w.setStyleSheet(STYLE_INPUT_CYBER)
+            w.setStyleSheet(ui_theme.get_lineedit_style())
 
         # HSN Layout with Verify Button
         hsn_layout = QHBoxLayout()
@@ -490,7 +664,7 @@ class AddPartDialog(QDialog):
         self.btn_verify.setFixedWidth(80)
         self.btn_verify.setFixedHeight(DIM_INPUT_HEIGHT)
         self.btn_verify.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_verify.setStyleSheet(STYLE_NEON_BUTTON.replace("min-width: 120px;", "min-width: 80px;"))
+        self.btn_verify.setStyleSheet(ui_theme.get_small_button_style())
         self.btn_verify.clicked.connect(self.verify_hsn_online)
         hsn_layout.addWidget(self.btn_verify)
 
@@ -514,6 +688,7 @@ class AddPartDialog(QDialog):
                  self.in_gst.setText(str(part_data[16]))
 
         # Signals for Auto-Fill
+        self.in_id.textChanged.connect(self.auto_fill_empty_fields) # New connection
         self.in_name.textChanged.connect(self.auto_suggest_tax_info)
         self.in_category.textChanged.connect(self.auto_suggest_tax_info)
 
@@ -534,10 +709,74 @@ class AddPartDialog(QDialog):
         self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
-        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setStyleSheet(STYLE_NEON_BUTTON)
-        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet("color: white; background: transparent;")
+        self.buttons.button(QDialogButtonBox.StandardButton.Ok).setStyleSheet(ui_theme.get_neon_action_button())
+        self.buttons.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet(ui_theme.get_cancel_button_style())
         
         self.layout.addRow(self.buttons)
+
+        # Auto-fill empty fields after initial population
+        QTimer.singleShot(0, self.auto_fill_empty_fields)
+
+    def auto_fill_empty_fields(self):
+        """Smart auto-fill: populate empty fields from catalog DB, supplier catalogs, and HSN rules.
+        Only fills fields that are currently empty (non-destructive)."""
+        part_id = self.in_id.text().strip().upper()
+        part_name = self.in_name.text().strip()
+        if not part_id and not part_name:
+            return
+
+        # ── 1. Catalog DB lookup → category ─────────────────────────────────
+        try:
+            import sqlite3, os
+            s = self.db_manager.get_shop_settings() if self.db_manager else {}
+            cat_db = (s or {}).get("nexses_catalog_db", "")
+            from path_utils import get_resource_path  # type: ignore
+            if not cat_db or not os.path.exists(cat_db):
+                cat_db = get_resource_path("nexses_ecatalog.db")
+            if os.path.exists(cat_db):
+                conn = sqlite3.connect(cat_db, check_same_thread=False)
+                cur = conn.cursor()
+                cur.execute("SELECT category FROM parts_master WHERE part_code = ? LIMIT 1", (part_id,))
+                row = cur.fetchone()
+                if row and row[0] and not self.in_category.text().strip():
+                    self.in_category.blockSignals(True)
+                    self.in_category.setText(str(row[0]).strip())
+                    self.in_category.blockSignals(False)
+                conn.close()
+        except Exception:
+            pass
+
+        # ── 2. Supplier catalogs lookup → vendor ─────────────────────────────
+        try:
+            if self.db_manager and not self.in_vendor.text().strip():
+                conn2 = self.db_manager.get_connection()
+                cur2 = conn2.cursor()
+                cur2.execute(
+                    "SELECT vendor_name FROM supplier_catalogs WHERE part_code = ? AND vendor_name != '' LIMIT 1",
+                    (part_id,)
+                )
+                vrow = cur2.fetchone()
+                if vrow and vrow[0]:
+                    self.in_vendor.setText(str(vrow[0]).strip())
+                elif part_name:
+                    # Fallback: match by part name prefix
+                    cur2.execute(
+                        "SELECT vendor_name FROM supplier_catalogs WHERE part_name LIKE ? AND vendor_name != '' LIMIT 1",
+                        (f"%{part_name[:12]}%",)
+                    )
+                    vrow2 = cur2.fetchone()
+                    if vrow2 and vrow2[0]:
+                        self.in_vendor.setText(str(vrow2[0]).strip())
+                conn2.close()
+        except Exception:
+            pass
+
+        # ── 3. Description fallback → use part name if empty ─────────────────
+        if not self.in_desc.text().strip() and part_name and part_name not in ('None', ''):
+            self.in_desc.setText(part_name)
+
+        # ── 4. HSN / GST auto-suggest ─────────────────────────────────────────
+        self.auto_suggest_tax_info()
 
     def auto_suggest_tax_info(self):
         """Smart Auto-Fill HSN/GST based on part name or category."""
@@ -573,7 +812,7 @@ class AddPartDialog(QDialog):
             'name': self.in_name.text(), 
             'desc': self.in_desc.text(), 
             'price': float(self.in_price.text() or 0), 
-            'qty': int(self.in_qty.text() or 0), 
+            'qty': float(self.in_qty.text() or 0), 
             'rack': self.in_rack.text(), 
             'col': self.in_col.text(),
             'reorder': int(self.in_reorder.text() or 5), 
@@ -589,7 +828,7 @@ class PurchaseOrderDialog(QDialog):
         super().__init__(parent)
         self.setWindowTitle("Purchase Command Center")
         self.resize(1000, 700)
-        self.setStyleSheet(f"background-color: #1a1a2e; color: {COLOR_TEXT_PRIMARY};")
+        self.setStyleSheet(ui_theme.get_dialog_style())
         self.items = items or [] 
         self.selected_ids = set() # Track selected Part IDs
         
@@ -598,10 +837,10 @@ class PurchaseOrderDialog(QDialog):
         
         hud_layout = QHBoxLayout()
         stats_container = QFrame()
-        stats_container.setStyleSheet(f"background-color: {COLOR_SURFACE}; border-radius: 12px; border: 1px solid #333;")
+        stats_container.setStyleSheet(ui_theme.get_panel_frame_style())
         stats_layout = QHBoxLayout(stats_container)
-        stats_layout.setContentsMargins(20, 15, 20, 15)
-        stats_layout.setSpacing(40)
+        stats_layout.setContentsMargins(5, 5, 5, 5)
+        stats_layout.setSpacing(10)
         
         self.card_reorder = ReactorStatCard("LOW STOCK", "0", COLOR_ACCENT_RED, small=True)
         self.card_vendors = ReactorStatCard("ACTIVE VENDORS", "0", COLOR_ACCENT_GREEN, small=True)
@@ -617,21 +856,21 @@ class PurchaseOrderDialog(QDialog):
         controls_layout.setSpacing(10)
         
         self.btn_auto = QPushButton("🚀 AUTO-SELECT LOW STOCK")
-        self.btn_auto.setStyleSheet(STYLE_NEON_BUTTON)
+        self.btn_auto.setStyleSheet(ui_theme.get_neon_action_button())
         self.btn_auto.setFixedSize(220, DIM_BUTTON_HEIGHT)
         self.btn_auto.clicked.connect(self.auto_select_low_stock)
         controls_layout.addWidget(self.btn_auto)
         
         self.input_search = QLineEdit()
         self.input_search.setPlaceholderText("🔍 Search Part / Vendor...")
-        self.input_search.setStyleSheet(STYLE_INPUT_CYBER)
+        self.input_search.setStyleSheet(ui_theme.get_lineedit_style())
         self.input_search.textChanged.connect(self.filter_table)
         controls_layout.addWidget(self.input_search)
         
         controls_layout.addWidget(QLabel("Filter Vendor:"))
         self.combo_vendor = QComboBox()
         self.combo_vendor.addItem("All Vendors")
-        self.combo_vendor.setStyleSheet(STYLE_INPUT_CYBER)
+        self.combo_vendor.setStyleSheet(ui_theme.get_lineedit_style())
         self.combo_vendor.setFixedWidth(200)
         
         vendors = sorted(list(set([i[4] for i in self.items if i[4]])))
@@ -652,12 +891,12 @@ class PurchaseOrderDialog(QDialog):
         
         btn_layout = QHBoxLayout()
         self.btn_generate = QPushButton("📥 GENERATE PURCHASE LIST")
-        self.btn_generate.setStyleSheet(STYLE_NEON_BUTTON)
+        self.btn_generate.setStyleSheet(ui_theme.get_neon_action_button())
         self.btn_generate.setFixedSize(250, 40)
         self.btn_generate.clicked.connect(self.accept)
         
         self.btn_cancel = QPushButton("CANCEL")
-        self.btn_cancel.setStyleSheet("color: #ff4444; border: 1px solid #ff4444; padding: 5px; border-radius: 4px; background: transparent;")
+        self.btn_cancel.setStyleSheet(ui_theme.get_danger_button_style())
         self.btn_cancel.setFixedSize(100, 40)
         self.btn_cancel.clicked.connect(self.reject)
         
@@ -680,7 +919,7 @@ class PurchaseOrderDialog(QDialog):
             self.rows_map[i] = item
             
             chk = QCheckBox()
-            chk.setStyleSheet(f"QCheckBox::indicator:checked {{ background-color: {COLOR_ACCENT_CYAN}; border: 1px solid {COLOR_ACCENT_CYAN}; }}")
+            chk.setStyleSheet(ui_theme.get_table_checkbox_style())
             # Use a closure/lambda to capture the row index 'i'
             # We need to make sure i is bound correctly
             chk.stateChanged.connect(lambda state, row=i: self.on_item_checked(row, state))
@@ -692,7 +931,7 @@ class PurchaseOrderDialog(QDialog):
             
             self.table.setItem(i, 1, QTableWidgetItem(str(item[0])))
             self.table.setItem(i, 2, QTableWidgetItem(str(item[1])))
-            self.table.setItem(i, 3, QTableWidgetItem(str(item[4])))
+            self.table.setItem(i, 3, QTableWidgetItem(f"{float(item[4]):g}" if item[4] is not None else "0"))
             
             max_stock = max(int(item[3] or 5) * 2, 10) 
             pb = QProgressBar()
@@ -833,6 +1072,12 @@ class InventoryPage(QWidget):
             
             self.all_rows = [] 
             
+            self.catalog_map = {}
+            self.catalog_hierarchy = {}
+            self.bridge_thread = CatalogBridgeThread(db_manager)
+            self.bridge_thread.data_loaded.connect(self.on_catalog_bridged)
+            self.bridge_thread.start()
+            
             self.setup_ui()
             self.load_data()
             app_logger.info("InventoryPage Initialized Successfully.")
@@ -841,7 +1086,7 @@ class InventoryPage(QWidget):
 
     def setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(DIM_MARGIN_STD, DIM_MARGIN_STD, DIM_MARGIN_STD, DIM_MARGIN_STD)
+        layout.setContentsMargins(10, 5, 10, 5)
         layout.setSpacing(DIM_SPACING_STD)
         
         # --- PRE-INIT COMPONENTS (Safety) ---
@@ -855,9 +1100,10 @@ class InventoryPage(QWidget):
         # --- ROW 1: Navigation & Actions ---
         top_row = QHBoxLayout()
         top_row.setSpacing(10)
+        top_row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         
         title = QLabel("📦 INVENTORY")
-        title.setStyleSheet(f"font-size: 20px; font-weight: bold; color: {COLOR_ACCENT_CYAN};")
+        title.setStyleSheet(ui_theme.get_page_title_style())
         top_row.addWidget(title)
         
         self.loading_bar = QProgressBar()
@@ -870,86 +1116,88 @@ class InventoryPage(QWidget):
 
         # Search Center
         self.search_bar = QLineEdit()
-        self.search_bar.setPlaceholderText("Search Parts / Vehicle...")
-        self.search_bar.setFixedWidth(250)
-        self.search_bar.setFixedHeight(35)
-        self.search_bar.setStyleSheet(STYLE_INPUT_CYBER + "border: none; background: transparent;")
+        self.search_bar.setPlaceholderText("🔍 Search Parts / Vehicle...")
+        self.search_bar.setFixedWidth(280)
+        self.search_bar.setFixedHeight(36)
+        # Use simple standard styling to avoid internal clipping issues
+        self.search_bar.setStyleSheet(ui_theme.get_lineedit_style())
         self.search_bar.textChanged.connect(lambda: self.search_timer.start())
         
-        search_frame = QFrame()
-        search_frame.setStyleSheet("""
-            QFrame {
-                background-color: rgba(11, 11, 20, 0.6);
-                border: 1px solid #1a1a2e;
-                border-radius: 12px;
-            }
-        """)
-        sf_layout = QHBoxLayout(search_frame)
-        sf_layout.setContentsMargins(10, 0, 10, 0)
-        sf_layout.addWidget(self.search_bar)
+        top_row.addWidget(self.search_bar)
         
-        top_row.addWidget(search_frame)
+        self.filter_btn = QPushButton("🌪️ FILTER & SELECT")
+        self.filter_btn.setCheckable(True)
+        self.filter_btn.setChecked(False)
+        self.filter_btn.setFixedSize(160, 36)
+        self.filter_btn.setStyleSheet(ui_theme.get_small_button_style("cyan"))
+        self.filter_btn.clicked.connect(self.toggle_filter_panel)
+        top_row.addWidget(self.filter_btn)
         
-        top_row.addStretch()
         top_row.addStretch()
         
         # Operational Buttons (Require Edit Permission)
         if self.can_edit:
             self.btn_add = QPushButton("➕ NEW")
-            self.btn_add.setFixedSize(90, 40)
+            self.btn_add.setFixedSize(90, 36)
             self.btn_add.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_add.setStyleSheet(STYLE_NEON_BUTTON)
+            self.btn_add.setStyleSheet(ui_theme.get_small_button_style("green"))
             self.btn_add.clicked.connect(lambda: self.open_add_dialog())
             top_row.addWidget(self.btn_add)
             
-            self.btn_import = QPushButton("📊 IMPORT")
-            self.btn_import.setFixedSize(100, 40)
-            self.btn_import.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_import.setStyleSheet(STYLE_NEON_BUTTON)
-            self.btn_import.clicked.connect(self.import_data)
-            top_row.addWidget(self.btn_import)
-            
-            self.btn_export = QPushButton("📥 EXPORT")
-            self.btn_export.setFixedSize(100, 40)
-            self.btn_export.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_export.setStyleSheet(STYLE_NEON_BUTTON)
-            self.btn_export.clicked.connect(self.export_to_excel)
-            top_row.addWidget(self.btn_export)
-            
             self.btn_purchase = QPushButton("📜 BUY")
-            self.btn_purchase.setFixedSize(90, 40)
+            self.btn_purchase.setFixedSize(100, 36)
             self.btn_purchase.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_purchase.setStyleSheet("background-color: rgba(241, 196, 15, 0.1); color: #f1c40f; border: 1px solid #f1c40f; border-radius: 6px; font-weight: bold;")
+            self.btn_purchase.setStyleSheet(ui_theme.get_small_button_style("amber"))
             self.btn_purchase.clicked.connect(self.generate_purchase_list)
             top_row.addWidget(self.btn_purchase)
             
-            # SEPARATOR
-            line = QFrame()
-            line.setFrameShape(QFrame.Shape.VLine)
-            line.setFrameShadow(QFrame.Shadow.Sunken)
-            line.setStyleSheet("background-color: #333;")
-            top_row.addWidget(line)
+            # --- DROPDOWN: DATA ---
+            btn_data = QPushButton("📊 DATA ▼")
+            btn_data.setFixedSize(110, 36)
+            btn_data.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_data.setStyleSheet(ui_theme.get_small_button_style("cyan") + " QPushButton::menu-indicator { image: none; width: 0px; }")
             
-            # --- ACTION BUTTONS (Moved from Table) ---
-            self.btn_edit_part = QPushButton("✏️ EDIT")
-            self.btn_edit_part.setFixedSize(90, 40)
-            self.btn_edit_part.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_edit_part.setStyleSheet("background-color: rgba(0, 229, 255, 0.1); color: #00e5ff; border: 1px solid #00e5ff; border-radius: 6px; font-weight: bold;")
-            self.btn_edit_part.clicked.connect(self.on_edit_click)
-            top_row.addWidget(self.btn_edit_part)
+            data_menu = QMenu(self)
+            data_menu.setStyleSheet("QMenu { background-color: #0b0b14; color: #00e5ff; border: 1px solid #00e5ff; border-radius: 4px; } QMenu::item:selected { background-color: rgba(0,229,255,0.2); }")
+            
+            act_import = data_menu.addAction("📊 IMPORT EXCEL/CSV")
+            act_import.triggered.connect(self.import_data)
+            self.btn_import = act_import 
+            
+            act_export = data_menu.addAction("📥 EXPORT INVENTORY")
+            act_export.triggered.connect(self.export_to_excel)
+            self.btn_export = act_export
+            
+            btn_data.setMenu(data_menu)
+            top_row.addWidget(btn_data)
+            
+            # --- DROPDOWN: TOOLS ---
+            btn_tools = QPushButton("🛠️ TOOLS ▼")
+            btn_tools.setFixedSize(115, 36)
+            btn_tools.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn_tools.setStyleSheet(ui_theme.get_small_button_style("green") + " QPushButton::menu-indicator { image: none; width: 0px; }")
+            
+            tools_menu = QMenu(self)
+            tools_menu.setStyleSheet("QMenu { background-color: #0b0b14; color: #00ff41; border: 1px solid #00ff41; border-radius: 4px; } QMenu::item:selected { background-color: rgba(0,255,65,0.2); }")
+            
+            act_hsn = tools_menu.addAction("⚡ HSN/GST SYNC")
+            act_hsn.triggered.connect(self.open_hsn_sync)
+            self.btn_hsn_sync = act_hsn
 
-            self.btn_del_part = QPushButton("🗑️ DEL")
-            self.btn_del_part.setFixedSize(90, 40)
-            self.btn_del_part.setCursor(Qt.CursorShape.PointingHandCursor)
-            self.btn_del_part.setStyleSheet("background-color: rgba(255, 68, 68, 0.1); color: #ff4444; border: 1px solid #ff4444; border-radius: 6px; font-weight: bold;")
-            self.btn_del_part.clicked.connect(self.on_delete_click)
-            top_row.addWidget(self.btn_del_part)
+            act_compat = tools_menu.addAction("🚗 VEHICLE COMPAT")
+            act_compat.triggered.connect(self.open_vehicle_compat)
+            self.btn_compat = act_compat
+            btn_tools.setMenu(tools_menu)
+            top_row.addWidget(btn_tools)
+
+            # Keep edit/delete as refs for use in context menu
+            self.btn_edit_part  = None   # accessed via right-click
+            self.btn_del_part   = None   # accessed via right-click
             
-        # Info Button available to all
         self.btn_info_part = QPushButton("ℹ️ INFO")
-        self.btn_info_part.setFixedSize(90, 40)
+        self.btn_info_part.setFixedSize(100, 36)
         self.btn_info_part.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_info_part.setStyleSheet("background-color: rgba(255, 230, 0, 0.1); color: #ffe600; border: 1px solid #ffe600; border-radius: 6px; font-weight: bold;")
+        self.btn_info_part.setStyleSheet(ui_theme.get_small_button_style("amber"))
         self.btn_info_part.clicked.connect(self.on_info_click)
         top_row.addWidget(self.btn_info_part)
         
@@ -957,10 +1205,10 @@ class InventoryPage(QWidget):
         
         # --- ROW 2: Holographic HUD ---
         stats_container = QFrame()
-        stats_container.setStyleSheet(f"background-color: {COLOR_SURFACE}; border-radius: 12px; border: 1px solid #333;")
+        stats_container.setStyleSheet(ui_theme.get_panel_frame_style())
         stats_layout = QHBoxLayout(stats_container)
-        stats_layout.setContentsMargins(20, 15, 20, 15)
-        stats_layout.setSpacing(40)
+        stats_layout.setContentsMargins(5, 5, 5, 5)
+        stats_layout.setSpacing(10)
         
         stats_layout.addWidget(self.card_val)
         stats_layout.addWidget(self.card_stock)
@@ -971,30 +1219,8 @@ class InventoryPage(QWidget):
         
         layout.addWidget(stats_container)
         
-        # --- FILTER BAR ROW (Replaced with Multi-Filter Panel) ---
-        
-        # Toggle Button for Filters
-        self.filter_btn = QPushButton("🌪️ MULTI-FILTER")
-        self.filter_btn.setCheckable(True)
-        self.filter_btn.setChecked(False)
-        self.filter_btn.setStyleSheet(STYLE_NEON_BUTTON + "padding: 5px; font-size: 10pt;")
-        self.filter_btn.clicked.connect(self.toggle_filter_panel)
-        
-        self.btn_select_all = QPushButton("☑ SELECT ALL")
-        self.btn_select_all.setStyleSheet(STYLE_NEON_BUTTON + "padding: 5px; font-size: 10pt; background-color: rgba(0, 242, 255, 0.1);")
-        self.btn_select_all.clicked.connect(self.select_all_filtered)
-        
-        self.btn_deselect_all = QPushButton("☐ DESELECT ALL")
-        self.btn_deselect_all.setStyleSheet(STYLE_NEON_BUTTON + "padding: 5px; font-size: 10pt; background-color: rgba(255, 68, 68, 0.1); color: #ff4444; border-color: #ff4444;")
-        self.btn_deselect_all.clicked.connect(self.deselect_all_filtered)
+        # --- FILTER BAR & PANEL ---
 
-        filter_header_layout = QHBoxLayout()
-        filter_header_layout.addWidget(self.filter_btn)
-        filter_header_layout.addSpacing(10)
-        filter_header_layout.addWidget(self.btn_select_all)
-        filter_header_layout.addWidget(self.btn_deselect_all)
-        filter_header_layout.addStretch()
-        layout.addLayout(filter_header_layout)
 
         # Collapsible Panel
         self.filter_panel = QFrame()
@@ -1003,68 +1229,184 @@ class InventoryPage(QWidget):
         fp_layout = QVBoxLayout(self.filter_panel)
         fp_layout.setContentsMargins(10, 10, 10, 10)
         
-        # Row 1: Status & Category
         fp_row1 = QHBoxLayout()
+        fp_row2 = QHBoxLayout()
+        
+        self.combo_cat = QComboBox()
+        self.combo_cat.addItem("All Categories")
+        self.combo_cat.setStyleSheet(ui_theme.get_lineedit_style())
+        self.combo_cat.currentTextChanged.connect(self._on_cat_changed)
+        fp_row1.addWidget(QLabel("Category:"))
+        fp_row1.addWidget(self.combo_cat)
+        
+        self.combo_model = QComboBox()
+        self.combo_model.addItem("All Models")
+        self.combo_model.setStyleSheet(ui_theme.get_lineedit_style())
+        self.combo_model.currentTextChanged.connect(self._on_model_changed)
+        fp_row1.addWidget(QLabel("Model:"))
+        fp_row1.addWidget(self.combo_model)
+        
+        self.combo_section = QComboBox()
+        self.combo_section.addItem("All Sections")
+        self.combo_section.setStyleSheet(ui_theme.get_lineedit_style())
+        self.combo_section.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToContents)
+        self.combo_section.setMinimumWidth(200)
+        self.combo_section.currentTextChanged.connect(self.filter_table)
+        fp_row1.addWidget(QLabel("Section:"))
+        fp_row1.addWidget(self.combo_section)
+        
+        fp_row1.addStretch()
         
         self.combo_status = QComboBox()
         self.combo_status.addItems(["All Stock Status", "Low Stock", "Critical (<=3)", "Dead Stock (>50)"])
-        self.combo_status.setStyleSheet(STYLE_INPUT_CYBER)
+        self.combo_status.setStyleSheet(ui_theme.get_lineedit_style())
         self.combo_status.currentTextChanged.connect(self.filter_table)
-        fp_row1.addWidget(QLabel("Stock:"))
-        fp_row1.addWidget(self.combo_status)
+        fp_row2.addWidget(QLabel("Stock:"))
+        fp_row2.addWidget(self.combo_status)
         
-        self.combo_description = QComboBox()
-        self.combo_description.addItem("All Descriptions")
-        self.combo_description.setStyleSheet(STYLE_INPUT_CYBER)
-        self.combo_description.currentTextChanged.connect(self.filter_table)
-        fp_row1.addWidget(QLabel("Description:"))
-        fp_row1.addWidget(self.combo_description)
-
         self.chk_new_only = QCheckBox("✨ Show ONLY Newly Added")
-        self.chk_new_only.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-weight: bold;")
+        self.chk_new_only.setStyleSheet(ui_theme.get_checkbox_style() + f"QCheckBox {{ color: {COLOR_ACCENT_GREEN}; font-weight: bold; }}")
         self.chk_new_only.stateChanged.connect(self.filter_table)
-        fp_row1.addWidget(self.chk_new_only)
+        fp_row2.addWidget(self.chk_new_only)
         
         self.chk_edited_only = QCheckBox("⏳ Show ONLY Edited Recently")
-        self.chk_edited_only.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-weight: bold;")
+        self.chk_edited_only.setStyleSheet(ui_theme.get_checkbox_style() + f"QCheckBox {{ color: {COLOR_ACCENT_CYAN}; font-weight: bold; }}")
         self.chk_edited_only.stateChanged.connect(self.filter_table)
-        fp_row1.addWidget(self.chk_edited_only)
+        fp_row2.addWidget(self.chk_edited_only)
         
-        fp_row1.addStretch()
+        self.chk_missing_compat = QCheckBox("❌ Show ONLY Missing Compat")
+        self.chk_missing_compat.setStyleSheet(ui_theme.get_checkbox_style() + f"QCheckBox {{ color: {COLOR_ACCENT_RED}; font-weight: bold; }}")
+        self.chk_missing_compat.stateChanged.connect(self.filter_table)
+        fp_row2.addWidget(self.chk_missing_compat)
+        
+        fp_row2.addStretch()
+        
+        # Selection tools
+        self.btn_select_all = QPushButton("☑ SELECT ALL")
+        self.btn_select_all.setStyleSheet(ui_theme.get_small_button_style())
+        self.btn_select_all.clicked.connect(self.select_all_filtered)
+        
+        self.btn_deselect_all = QPushButton("☐ DESELECT ALL")
+        self.btn_deselect_all.setStyleSheet(ui_theme.get_small_button_style("red"))
+        self.btn_deselect_all.clicked.connect(self.deselect_all_filtered)
+        
+        fp_row1.addWidget(self.btn_select_all)
+        fp_row1.addWidget(self.btn_deselect_all)
+        
         fp_layout.addLayout(fp_row1)
-        
-        
-        # Removed Manual Column Filters (User Request)
-        # fp_row2 = QHBoxLayout()
-        # ... removed ...
+        fp_layout.addLayout(fp_row2)
         
         layout.addWidget(self.filter_panel)
 
         # --- ROW 3: Table ---
         self.table = QTableWidget()
-        cols = ["SEL", "PART ID", "NAME", "DESCRIPTION", "VENDOR", "PRICE", "QTY", "RACK", "COL"] 
+        cols = ["SEL", "PART ID", "NAME", "VENDOR", "PRICE", "QTY", "RACK", "COL"] 
         self.table.setColumnCount(len(cols))
         self.table.setHorizontalHeaderLabels(cols)
         
         self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
-        self.table.horizontalHeader().setStretchLastSection(True)
+        self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        self.table.horizontalHeader().setStretchLastSection(False)
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.Stretch)  # QTY fills all empty space
+        
+        # Sensible initial widths
+        self.table.setColumnWidth(0, 40)   # SEL
+        self.table.setColumnWidth(1, 110)  # PART ID
+        self.table.setColumnWidth(2, 280)  # NAME
+        self.table.setColumnWidth(3, 65)   # VENDOR
+        self.table.setColumnWidth(4, 80)   # PRICE
+        # col 5 (QTY) stretches — fills all remaining space
+        self.table.setColumnWidth(6, 70)   # RACK — enough for text values
+        self.table.setColumnWidth(7, 65)   # COL — enough for text values like 'ARUN'
         
         # Styling
-        self.table.setStyleSheet(STYLE_TABLE_CYBER)
-        self.table.setAlternatingRowColors(False)
-        self.table.setShowGrid(False) 
+        self.table.setStyleSheet(
+            STYLE_TABLE_CYBER
+            + "QTableWidget { background-color: #040810; alternate-background-color: #060c16; }"
+        )
+        self.table.setAlternatingRowColors(True)
+        self.table.setShowGrid(False)
         self.table.setGridStyle(Qt.PenStyle.NoPen)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.table.setStyleSheet(STYLE_TABLE_CYBER + "QTableWidget { background-color: #050505; alternate-background-color: #050505; }")
-        
+        self.table.verticalHeader().setDefaultSectionSize(28)   # row height
+
         self.delegate = BladeDelegate(self.table)
-        for c in range(self.table.columnCount()): 
-             self.table.setItemDelegateForColumn(c, self.delegate)
-             
+        for c in range(self.table.columnCount()):
+            self.table.setItemDelegateForColumn(c, self.delegate)
+
         self.delegate.selectToggled.connect(self.handle_select_toggle)
+        self.delegate.infoClicked.connect(self._on_delegate_info)
+        self.delegate.editClicked.connect(self._on_delegate_edit)
+        self.delegate.deleteClicked.connect(self._on_delegate_delete)
+
+        # ── Right-click context menu ──────────────────────────────────────────
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self._show_context_menu)
+
         layout.addWidget(self.table)
+
+    def _show_context_menu(self, pos):
+        """Rich right-click context menu on any inventory row."""
+        row = self.table.rowAt(pos.y())
+        if row < 0:
+            return
+
+        # Make sure the row is selected
+        self.table.selectRow(row)
+
+        menu = QMenu(self)
+        menu.setStyleSheet("""
+            QMenu {
+                background-color: #0b0b14;
+                color: #e0e0e0;
+                border: 1px solid #223;
+                border-radius: 6px;
+                padding: 4px 0;
+                font-family: 'Segoe UI';
+                font-size: 12px;
+            }
+            QMenu::item {
+                padding: 7px 20px 7px 14px;
+                border-radius: 4px;
+            }
+            QMenu::item:selected  { background: rgba(0,229,255,0.15); color: #00e5ff; }
+            QMenu::item:disabled  { color: #555; }
+            QMenu::separator      { height: 1px; background: #223; margin: 4px 10px; }
+        """)
+
+        # Get part ID from selected row for display
+        part_id_item = self.table.item(row, 1)
+        part_id = part_id_item.text() if part_id_item else ""
+        part_name_item = self.table.item(row, 2)
+        part_name = (part_name_item.text()[:28] + "…") if part_name_item and len(part_name_item.text()) > 28 else (part_name_item.text() if part_name_item else "")
+
+        # Header label (non-selectable)
+        hdr = menu.addAction(f"  {part_id}  {part_name}")
+        hdr.setEnabled(False)
+        menu.addSeparator()
+
+        act_info = menu.addAction("ℹ️  View Info")
+        act_info.triggered.connect(self.on_info_click)
+
+        if self.can_edit:
+            act_edit = menu.addAction("✏️  Edit Part")
+            act_edit.triggered.connect(self.on_edit_click)
+
+            menu.addSeparator()
+
+            act_copy = menu.addAction("📋  Copy Part ID")
+            act_copy.triggered.connect(lambda: QApplication.clipboard().setText(part_id))
+
+            menu.addSeparator()
+
+            act_del = menu.addAction("🗑️  Delete Part")
+            act_del.triggered.connect(self.on_delete_click)
+        else:
+            act_copy = menu.addAction("📋  Copy Part ID")
+            act_copy.triggered.connect(lambda: QApplication.clipboard().setText(part_id))
+
+        menu.exec(self.table.viewport().mapToGlobal(pos))
 
     def toggle_filter_panel(self):
         is_visible = self.filter_btn.isChecked()
@@ -1072,31 +1414,142 @@ class InventoryPage(QWidget):
 
     def open_add_dialog(self, part_data=None):
         try:
+            is_edit = part_data is not None
             dialog = AddPartDialog(self, self.db_manager, part_data)
             if dialog.exec():
                 data = dialog.get_data()
-                success, msg, is_duplicate = self.db_manager.add_part(data)
-                
-                if is_duplicate:
-                    # Show duplicate warning with option to update
-                    update_msg = f"{msg}\n\nDo you want to UPDATE the existing part?"
-                    if ProMessageBox.question(self, "⚠️ DUPLICATE DETECTED", update_msg):
-                        # User chose to update
-                        success, msg, _ = self.db_manager.add_part(data, allow_update=True)
-                        if success:
-                            ProMessageBox.information(self, "Updated", "Part updated successfully.")
-                            self.load_data()
-                        else:
-                            ProMessageBox.critical(self, "Error", f"Failed to update part.\n{msg}")
-                    # else: User cancelled, do nothing
-                elif success:
-                    ProMessageBox.information(self, "Success", "Part added successfully.")
-                    self.load_data()
+
+                if is_edit:
+                    # Edit mode: update directly
+                    success, msg, _ = self.db_manager.add_part(data, allow_update=True)
+                    if success:
+                        ProMessageBox.information(self, "Updated", "Part updated successfully.")
+                        self._fast_update_row(data['id'])
+                    else:
+                        ProMessageBox.critical(self, "Error", f"Failed to update part.\n{msg}")
                 else:
-                    ProMessageBox.critical(self, "Error", f"Failed to save part.\n{msg}")
+                    # Add mode: check for duplicates
+                    success, msg, is_duplicate = self.db_manager.add_part(data)
+
+                    if is_duplicate:
+                        update_msg = f"{msg}\n\nDo you want to UPDATE the existing part?"
+                        if ProMessageBox.question(self, "⚠️ DUPLICATE DETECTED", update_msg):
+                            success, msg, _ = self.db_manager.add_part(data, allow_update=True)
+                            if success:
+                                ProMessageBox.information(self, "Updated", "Part updated successfully.")
+                                self._fast_update_row(data['id'])
+                            else:
+                                ProMessageBox.critical(self, "Error", f"Failed to update part.\n{msg}")
+                    elif success:
+                        ProMessageBox.information(self, "Success", "Part added successfully.")
+                        self.load_data()  # acceptable for brand new parts
+                    else:
+                        ProMessageBox.critical(self, "Error", f"Failed to save part.\n{msg}")
         except Exception as e:
             app_logger.error(f"Error opening add dialog: {e}")
             ProMessageBox.critical(self, "Error", f"An error occurred: {e}")
+
+    def _fast_update_row(self, part_id):
+        """Optimized targeted UI update to prevent full reload lag when saving edits."""
+        try:
+            from datetime import datetime
+            import sys, os
+            updated_tuple = self.db_manager.get_part_by_id(part_id)
+            if not updated_tuple:
+                self.load_data()
+                return
+            
+            # Enrich compat
+            pid_upper = str(part_id).strip().upper()
+            try:
+                s = self.db_manager.get_shop_settings() or {}
+                cat_db = s.get("nexses_catalog_db", "")
+                if not cat_db or not os.path.exists(cat_db):
+                    from path_utils import get_resource_path
+                    cat_db = get_resource_path("nexses_ecatalog.db")
+                cat_tags = []
+                if os.path.exists(cat_db):
+                    import sqlite3
+                    conn = sqlite3.connect(cat_db, check_same_thread=False)
+                    c = conn.cursor()
+                    c.execute('''SELECT vm.model_name || CASE WHEN vm.variant != '' THEN ' ' || vm.variant ELSE '' END AS lbl
+                                 FROM compatibility_map cm
+                                 JOIN vehicles_master vm ON vm.vehicle_id = cm.vehicle_id
+                                 WHERE cm.part_code = ?''', (pid_upper,))
+                    for row in c.fetchall():
+                        lbl = str(row[0]).strip()
+                        if lbl and lbl not in ('*', '**', '***', '****', '*****'):
+                            if lbl not in cat_tags: cat_tags.append(lbl)
+                    conn.close()
+            except Exception as e:
+                cat_tags = []
+                
+            existing_compat = str(updated_tuple[9] or '').strip()
+            merged_tags = ', '.join(cat_tags) if cat_tags else existing_compat
+            
+            # Rebuild tuple
+            r_list = list(updated_tuple)
+            while len(r_list) <= 9: r_list.append('')
+            r_list[9] = merged_tags
+            new_r = tuple(r_list)
+            
+            # Update all_rows map
+            for idx, r in enumerate(self.all_rows):
+                if str(r[0]) == str(part_id):
+                    self.all_rows[idx] = new_r
+                    break
+                    
+            # Update UI row if exists
+            row_idx = -1
+            for i, mapped_row in self.rows_map.items():
+                if str(mapped_row[0]) == str(part_id):
+                    row_idx = i
+                    break
+                    
+            if row_idx >= 0:
+                self.table.setUpdatesEnabled(False)
+                # Apply new_r to this row using the same logic as populate_table
+                r = new_r
+                qty = float(r[4] or 0)
+                reorder_level = int(r[7] or 5) if len(r) > 7 else 5
+                is_low_stock = qty <= reorder_level
+                
+                is_checked = str(r[0]) in self.selected_part_ids
+                self.table.setItem(row_idx, 0, self._create_item("", 'select', {'checked': is_checked}))
+                self.table.setItem(row_idx, 1, self._create_item(r[0], 'id', {'is_low_stock': is_low_stock}))
+                
+                item2 = self._create_item(r[1], 'name', {
+                    'is_low_stock': is_low_stock, 
+                    'is_new': False,
+                    'is_edited': True
+                })
+                if len(r) > 9 and r[9]:
+                    tags = [t.strip() for t in str(r[9]).split(',') if t.strip()]
+                    d = item2.data(Qt.ItemDataRole.UserRole)
+                    if d:
+                         d['vehicle_tags'] = tags
+                         item2.setData(Qt.ItemDataRole.UserRole, d)
+                    item2.setToolTip("Compatibility:\n" + "\n".join(f"• {t}" for t in tags))
+                self.table.setItem(row_idx, 2, item2)
+                
+                vendor_name = r[8] if len(r) > 8 else ""
+                self.table.setItem(row_idx, 3, self._create_item(vendor_name, 'vendor'))
+                self.table.setItem(row_idx, 4, self._create_item(r[3], 'price'))
+                
+                max_val = max(reorder_level * 2, 10)
+                self.table.setItem(row_idx, 5, self._create_item("", 'stock', {'val': qty, 'max_val': max_val}))
+                self.table.setItem(row_idx, 6, self._create_item(r[5], 'generic'))
+                self.table.setItem(row_idx, 7, self._create_item(r[6], 'generic'))
+                
+                self.rows_map[row_idx] = r
+                self.table.setUpdatesEnabled(True)
+                self.table.viewport().update()
+                self.update_dashboard()
+            else:
+                self.load_data()
+        except Exception as e:
+            app_logger.error(f"Fast update error: {e}")
+            self.load_data()
 
     def import_data(self):
         try:
@@ -1139,7 +1592,12 @@ class InventoryPage(QWidget):
             path, _ = QFileDialog.getSaveFileName(self, "Export Inventory", f"Inventory_{datetime.now().strftime('%Y%m%d')}.xlsx", "Excel Files (*.xlsx)")
             if not path: return
             
-            cols = ["Part ID", "Name", "Description", "MRP", "Stock", "Rack", "Column", "Reorder Level", "Vendor", "Compatibility", "Category", "Added On", "Last Ordered"]
+            cols = [
+                "Part ID", "Name", "Description", "MRP (Unit Price)", "Stock Qty", 
+                "Rack", "Column", "Reorder Level", "Vendor", "Compatibility", 
+                "Category", "Added Date", "Last Ordered", "Added By", 
+                "Last Edited", "HSN Code", "GST Rate %", "Last Cost"
+            ]
             df = pd.DataFrame(self.all_rows, columns=cols)
             df.to_excel(path, index=False)
             ProMessageBox.information(self, "Success", f"Exported successfully to:\n{path}")
@@ -1180,20 +1638,7 @@ class InventoryPage(QWidget):
             if hasattr(self, 'loading_bar'): self.loading_bar.setVisible(False)
             self.all_rows = rows
             
-            # --- Populate Description Combo ---
-            descriptions = set()
-            for r in rows:
-                if len(r) > 2 and r[2]: # Index 2 is Description
-                    descriptions.add(str(r[2]).strip())
-            
-            current_desc = self.combo_description.currentText()
-            self.combo_description.blockSignals(True)
-            self.combo_description.clear()
-            self.combo_description.addItem("All Descriptions")
-            self.combo_description.addItems(sorted(list(descriptions)))
-            self.combo_description.setCurrentText(current_desc) # Restore if possible
-            self.combo_description.blockSignals(False)
-            # ---------------------------------
+            # Note: Catalog Hierarchy is handled by CatalogBridgeThread
             
             # Stats (Check existence first)
             total_val = 0
@@ -1202,7 +1647,7 @@ class InventoryPage(QWidget):
             
             for r in rows:
                 price = float(r[3] or 0)
-                qty = int(r[4] or 0)
+                qty = float(r[4] or 0)
                 total_val += (price * qty)
                 reorder = int(r[7] or 5)
                 if len(r) > 8: vendors.add(r[8])
@@ -1237,7 +1682,7 @@ class InventoryPage(QWidget):
         for r in rows:
             name = r[1]
             price = float(r[3] or 0)
-            qty = int(r[4] or 0)
+            qty = float(r[4] or 0)
             if qty <= 3: critical_items.append(name)
             if qty > 50: dead_stock_items.append(name)
             if price > max_price:
@@ -1294,6 +1739,21 @@ class InventoryPage(QWidget):
         if item_id_w:
             part_id = item_id_w.text() # String ID
             self.delete_part(part_id)
+
+    def _on_delegate_info(self, row):
+        """Called when INFO button inside a table cell is clicked."""
+        self.table.selectRow(row)
+        self.on_info_click()
+
+    def _on_delegate_edit(self, row):
+        """Called when EDIT button inside a table cell is clicked."""
+        self.table.selectRow(row)
+        self.on_edit_click()
+
+    def _on_delegate_delete(self, row):
+        """Called when DELETE button inside a table cell is clicked."""
+        self.table.selectRow(row)
+        self.on_delete_click()
 
     def on_info_click(self):
         row = self.table.currentRow()
@@ -1360,15 +1820,53 @@ class InventoryPage(QWidget):
         self.table.viewport().update()
 
 
+    def on_catalog_bridged(self, mapping, categories, hierarchy):
+        self.catalog_map = mapping
+        self.catalog_hierarchy = hierarchy
+        
+        self.combo_cat.blockSignals(True)
+        self.combo_cat.clear()
+        self.combo_cat.addItem("All Categories")
+        self.combo_cat.addItems(sorted(list(categories)))
+        self.combo_cat.blockSignals(False)
+        self._on_cat_changed("All Categories")
+        
+    def _on_cat_changed(self, cat_name):
+        self.combo_model.blockSignals(True)
+        self.combo_model.clear()
+        self.combo_model.addItem("All Models")
+        if cat_name in self.catalog_hierarchy:
+            models = sorted(list(self.catalog_hierarchy[cat_name].keys()))
+            self.combo_model.addItems(models)
+        self.combo_model.blockSignals(False)
+        self._on_model_changed("All Models")
+        self.filter_table()
+
+    def _on_model_changed(self, model_name):
+        self.combo_section.blockSignals(True)
+        self.combo_section.clear()
+        self.combo_section.addItem("All Sections")
+        
+        cat_name = self.combo_cat.currentText()
+        if cat_name in self.catalog_hierarchy and model_name in self.catalog_hierarchy[cat_name]:
+            sections = sorted(list(self.catalog_hierarchy[cat_name][model_name]))
+            self.combo_section.addItems(sections)
+            
+        self.combo_section.blockSignals(False)
+        self.filter_table()
+
     def filter_table(self):
         # Advanced Filtering Logic
         global_search = self.search_bar.text().lower()
         
         # New Panel Filters
         status_filter = self.combo_status.currentText()
-        desc_filter = self.combo_description.currentText()
+        cat_filter = self.combo_cat.currentText()
+        mod_filter = self.combo_model.currentText()
+        sec_filter = self.combo_section.currentText()
         new_only = self.chk_new_only.isChecked()
         edited_only = self.chk_edited_only.isChecked()
+        missing_compat = self.chk_missing_compat.isChecked()
         
         # Column Filters REMOVED
         # col_filters = {}
@@ -1387,13 +1885,14 @@ class InventoryPage(QWidget):
             name_val = str(r[1]).lower()
             vendor_val = str(r[8]).lower() if len(r)>8 else ""
             desc_val = str(r[2]).lower()
+            compat_val = str(r[9]).lower() if len(r)>9 and r[9] else ""
             
             if global_search:
-                if (global_search not in id_val) and (global_search not in name_val) and (global_search not in vendor_val) and (global_search not in desc_val):
+                if (global_search not in id_val) and (global_search not in name_val) and (global_search not in vendor_val) and (global_search not in desc_val) and (global_search not in compat_val):
                     continue
 
             # 2. Status Filter
-            qty = int(r[4] or 0)
+            qty = float(r[4] or 0)
             reorder = int(r[7] or 5) if len(r) > 7 else 5
             
             if status_filter == "Low Stock":
@@ -1403,11 +1902,22 @@ class InventoryPage(QWidget):
             elif status_filter == "Dead Stock (>50)":
                 if qty <= 50: continue
                 
-            # 3. Description Filter
-            if desc_filter != "All Descriptions":
-                item_desc = str(r[2]).strip()
-                if item_desc != desc_filter: continue
+            # 3. Catalog Hierarchy Filter
+            if cat_filter != "All Categories" or mod_filter != "All Models" or sec_filter != "All Sections":
+                part_id = str(r[0]).strip().upper()
+                mapped_data = self.catalog_map.get(part_id, [])
                 
+                matched = False
+                for (m_cat, m_mod, m_sec) in mapped_data:
+                    c_match = (cat_filter == "All Categories" or m_cat == cat_filter)
+                    m_match = (mod_filter == "All Models" or m_mod == mod_filter)
+                    s_match = (sec_filter == "All Sections" or m_sec == sec_filter)
+                    if c_match and m_match and s_match:
+                        matched = True
+                        break
+                
+                if not matched:
+                    continue
             # 4. New Only Filter
             if new_only:
                 added_date_str = r[11] if len(r) > 11 else ""
@@ -1428,16 +1938,26 @@ class InventoryPage(QWidget):
             # 5. Edited Recently Filter
             if edited_only:
                 edited_date_str = r[14] if len(r) > 14 else ""
+                ordered_date_str = r[12] if len(r) > 12 else ""
+                
                 is_edited = False
-                if edited_date_str:
-                    try:
-                        d_obj = datetime.strptime(edited_date_str, "%Y-%m-%d %H:%M")
-                        if (today - d_obj).total_seconds() <= 86400: # 24h
-                            is_edited = True
-                    except: pass
+                for d_str in (edited_date_str, ordered_date_str):
+                    if d_str:
+                        try:
+                            d_obj = datetime.strptime(str(d_str)[:16], "%Y-%m-%d %H:%M")
+                            if (today - d_obj).total_seconds() <= 86400: # 24h
+                                is_edited = True
+                                break
+                        except: pass
                 if not is_edited: continue
 
-            # 5. Removed Column Filter Logic
+            # 6. Missing Compatibility Filter
+            if missing_compat:
+                c_val = str(r[9]).strip() if len(r) > 9 and r[9] else ""
+                if c_val and c_val.lower() not in ("none", "-", "n/a"):
+                    continue
+
+            # 7. Removed Column Filter Logic
             
             # if col_match:
             #     filtered_rows.append(r)
@@ -1475,7 +1995,7 @@ class InventoryPage(QWidget):
             self.table.setItem(i, 0, item0)
 
             
-            qty = int(r[4] or 0)
+            qty = float(r[4] or 0)
             reorder_level = int(r[7] or 5) if len(r) > 7 else 5
             is_low_stock = qty <= reorder_level
             
@@ -1491,61 +2011,55 @@ class InventoryPage(QWidget):
                 except: pass
             
             is_edited = False
-            edited_date_str = r[14] if len(r) > 14 else "" # last_edited_date is index 14
-            if edited_date_str:
-                try:
-                    # edited_date format: %Y-%m-%d %H:%M
-                    d_obj = datetime.strptime(edited_date_str, "%Y-%m-%d %H:%M")
-                    if (today - d_obj).total_seconds() <= 86400: # 24h
-                        is_edited = True
-                except: pass
+            edited_date_str = r[14] if len(r) > 14 else "" # last_edited_date
+            ordered_date_str = r[12] if len(r) > 12 else "" # last_ordered_date
+            for d_str in (edited_date_str, ordered_date_str):
+                if d_str:
+                    try:
+                        d_obj = datetime.strptime(str(d_str)[:16], "%Y-%m-%d %H:%M")
+                        if (today - d_obj).total_seconds() <= 86400: # 24h
+                            is_edited = True
+                            break
+                    except: pass
 
             # 1: ID
             self.table.setItem(i, 1, self._create_item(r[0], 'id', {'is_low_stock': is_low_stock}))
             
-            # 2: Name (With Vehicle Tags & Badges)
+            # 2: Name (With Vehicle Tags from compatibility field)
             item2 = self._create_item(r[1], 'name', {
                 'is_low_stock': is_low_stock, 
                 'is_new': is_new,
                 'is_edited': is_edited
             })
-            # Add Vehicle Tags if present
+            # Add Vehicle Tags from compatibility column (index 9)
             if len(r) > 9 and r[9]:
-                tags = [t.strip() for t in r[9].split(',') if t.strip()]
+                tags = [t.strip() for t in str(r[9]).split(',') if t.strip()]
                 data = item2.data(Qt.ItemDataRole.UserRole)
                 data['vehicle_tags'] = tags
                 item2.setData(Qt.ItemDataRole.UserRole, data)
+                item2.setToolTip("Compatibility:\n" + "\n".join(f"• {t}" for t in tags))
             self.table.setItem(i, 2, item2)
             
-            # 3: Description 
-            self.table.setItem(i, 3, self._create_item(r[2], 'description'))
-            
-            # 4: Vendor (New)
+            # 3: Vendor
             vendor_name = r[8] if len(r) > 8 else ""
-            self.table.setItem(i, 4, self._create_item(vendor_name, 'vendor'))
+            self.table.setItem(i, 3, self._create_item(vendor_name, 'vendor'))
 
-            # 5: Price
-            self.table.setItem(i, 5, self._create_item(r[3], 'price'))
+            # 4: Price
+            self.table.setItem(i, 4, self._create_item(r[3], 'price'))
             
-            # 6: Qty
+            # 5: Qty
             max_val = max(reorder_level * 2, 10)
             item5 = self._create_item("", 'stock', {'val': qty, 'max_val': max_val})
-            self.table.setItem(i, 6, item5)
+            self.table.setItem(i, 5, item5)
             
-            # 7: Rack
-            self.table.setItem(i, 7, self._create_item(r[5], 'generic'))
+            # 6: Rack
+            self.table.setItem(i, 6, self._create_item(r[5], 'generic'))
             
-            # 8: Col
-            self.table.setItem(i, 8, self._create_item(r[6], 'generic'))
-                
+            # 7: Col
+            self.table.setItem(i, 7, self._create_item(r[6], 'generic'))
+
         self.table.blockSignals(False)
         self.table.setUpdatesEnabled(True)
-        
-        # Auto-Resize Columns to Content
-        self.table.resizeColumnsToContents()
-        
-        # Adjust specific columns if needed (Optional)
-        # self.table.setColumnWidth(0, 40)   # SEL
         
         # Update Dashboard with fresh stats
         self.update_dashboard()
@@ -1581,7 +2095,7 @@ class InventoryPage(QWidget):
         for i in range(self.table.rowCount()):
             if i in self.rows_map:
                 r = self.rows_map[i]
-                qty = int(r[4] or 0)
+                qty = float(r[4] or 0)
                 reorder = int(r[7] or 5) if len(r) > 7 else 5
                 
                 if qty <= reorder:
@@ -1603,60 +2117,35 @@ class InventoryPage(QWidget):
         # Filter all_rows for IDs in selected_part_ids
         for r in self.all_rows:
             if str(r[0]) in self.selected_part_ids:
-                # Same format as before
-                # ID, Name, Stock, Reorder, Vendor
+                # Same format as before plus price, hsn, gst
+                # ID, Name, Stock, Reorder, Vendor, Price, HSN, GST
                 reorder = r[7] if len(r) > 7 else 5
                 vendor = r[8] if len(r) > 8 else ""
-                selected.append([r[0], r[1], r[4], reorder, vendor])
+                
+                unit_price = float(r[3]) if len(r) > 3 and r[3] else 0.0
+                last_cost  = float(r[17]) if len(r) > 17 and r[17] else 0.0
+                price = unit_price if unit_price > 0 else last_cost
+                
+                hsn = r[15] if len(r) > 15 and r[15] else '8714'
+                gst = float(r[16]) if len(r) > 16 and r[16] else 18.0
+                
+                selected.append([r[0], r[1], r[4], reorder, vendor, price, hsn, gst])
         
         return selected
 
 
     def show_part_info(self, row_data):
-        """Show detailed info about the part including added date and who added it"""
-        # row_data indices: 
-        # 0:ID, 1:Name, 2:Desc, 3:Price, 4:Qty, 5:Rack, 6:Col, 7:Reorder, 
-        # 8:Vendor, 9:Compat, 10:Cat, 11:AddedDate, 12:LastOrdered, 13:AddedBy
-        
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QFormLayout, QLabel, QDialogButtonBox
-        
-        dialog = QDialog(self)
-        dialog.setWindowTitle(f"Part Details - {row_data[1]}")
-        dialog.setMinimumWidth(400)
-        dialog.setStyleSheet(f"background-color: {COLOR_SURFACE}; color: white;")
-        
-        layout = QVBoxLayout(dialog)
-        form = QFormLayout()
-        form.setFormAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop)
-        form.setLabelAlignment(Qt.AlignmentFlag.AlignRight)
-        
-        def add_row(label, value):
-            lbl = QLabel(str(value))
-            lbl.setStyleSheet("color: #00f2ff; font-weight: bold; font-size: 11pt;")
-            form.addRow(f"{label}:", lbl)
+        """Open the full Part Tracker for this part."""
+        try:
+            from part_tracker_dialog import PartTrackerDialog
+            dlg = PartTrackerDialog(self.db_manager, row_data, parent=self)
+            dlg.exec()
+        except Exception as e:
+            app_logger.error(f"Error opening Part Tracker: {e}")
+            from custom_components import ProMessageBox
+            ProMessageBox.critical(self, "Error", f"Could not open Part Tracker:\n{e}")
 
-        add_row("Part ID", row_data[0])
-        add_row("Name", row_data[1])
-        add_row("Description", row_data[2])
-        add_row("Price", f"₹ {row_data[3]}")
-        add_row("Quantity", row_data[4])
-        add_row("Location", f"Rack {row_data[5]}, Col {row_data[6]}")
-        add_row("Vendor", row_data[8] if len(row_data) > 8 else "N/A")
-        add_row("Added Date", row_data[11] if len(row_data) > 11 and row_data[11] else "Old Stock")
-        add_row("Last Updated", row_data[12] if len(row_data) > 12 and row_data[12] else "Never")
-        
-        # safely get added_by if it exists in tuple
-        added_by = row_data[13] if len(row_data) > 13 else "System"
-        add_row("Added By", added_by)
 
-        layout.addLayout(form)
-        
-        btn_box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
-        btn_box.rejected.connect(dialog.reject)
-        btn_box.setStyleSheet(STYLE_NEON_BUTTON)
-        layout.addWidget(btn_box)
-        
-        dialog.exec()
 
     def delete_part(self, part_id):
         if ProMessageBox.question(self, "Confirm Delete", f"Are you sure you want to delete Part ID: {part_id}?"):
@@ -1730,3 +2219,38 @@ class InventoryPage(QWidget):
         except Exception as e:
             app_logger.error(f"Error navigating to PO Page: {e}")
             ProMessageBox.critical(self, "Error", f"Navigation Error: {e}")
+
+
+
+    # ─── HSN Sync ──────────────────────────────────────────────────
+    def open_hsn_sync(self):
+        try:
+            from hsn_sync_engine import HsnSyncDialog
+            dlg = HsnSyncDialog(self, self.db_manager)
+            dlg.sync_completed.connect(self._on_hsn_sync_done)
+            dlg.exec()
+        except Exception as e:
+            app_logger.error(f'Failed to open HSN Sync: {e}')
+            ProMessageBox.critical(self, 'Error', f'Could not open HSN Sync:\n{e}')
+
+    def _on_hsn_sync_done(self, count: int):
+        self.load_data()
+        ProMessageBox.information(self, '✅ HSN Sync Complete',
+            f'Successfully synced HSN & GST for {count} part(s).')
+
+    # ─── Vehicle Compat ─────────────────────────────────────────────
+    def open_vehicle_compat(self):
+        try:
+            from vehicle_compat_engine import VehicleCompatDialog
+            dlg = VehicleCompatDialog(self, self.db_manager)
+            dlg.sync_completed.connect(self._on_compat_done)
+            dlg.exec()
+        except Exception as e:
+            app_logger.error(f'Failed to open Vehicle Compat: {e}')
+            ProMessageBox.critical(self, 'Error', f'Could not open Vehicle Compat:\n{e}')
+
+    def _on_compat_done(self, count: int):
+        self.load_data()
+        ProMessageBox.information(self, '🚗 Compatibility Updated',
+            f'Vehicle compatibility filled for {count} part(s).')
+

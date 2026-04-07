@@ -2,54 +2,98 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor
+from reportlab.platypus import Paragraph
+from reportlab.lib.styles import ParagraphStyle
 import os
 from logger import app_logger
+from path_utils import get_app_data_path  # type: ignore
 
 class InvoiceGenerator:
     def __init__(self, db_manager):
         self.db_manager = db_manager
 
     # ── Color Extraction ──────────────────────────────────────────────
-    def _extract_logo_color(self, logo_path):
+    def _extract_logo_colors(self, logo_path):
         """
-        Extract the dominant non-white/non-black color from the logo image.
-        Returns an (r, g, b) tuple normalized to 0-1 range for reportlab.
-        Falls back to navy blue if extraction fails.
+        Extract the top 2 dominant DISTINCT colors from the logo independently.
+        Uses PIL quantize to avoid averaging/mixing colors.
+        Returns (brand_color, secondary_color) as normalized RGB tuples.
+        Falls back to navy + gold on failure.
         """
-        FALLBACK = (0.10, 0.31, 0.63)  # Navy blue
+        FALLBACK_BRAND     = (0.10, 0.31, 0.63)   # Navy blue
+        FALLBACK_SECONDARY = (0.85, 0.65, 0.13)   # Gold
+
+        def _norm(r, g, b, darken=0.82):
+            """Normalize 0-255 RGB to 0-1 and darken slightly for print readability."""
+            return (
+                min(r / 255 * darken, 1.0),
+                min(g / 255 * darken, 1.0),
+                min(b / 255 * darken, 1.0),
+            )
+
+        def _is_valid(r, g, b):
+            """Reject near-white, near-black, and near-gray pixels."""
+            brightness  = (r + g + b) / 3
+            saturation  = max(r, g, b) - min(r, g, b)
+            return 30 < brightness < 230 and saturation > 45
+
         try:
             from PIL import Image
+            from collections import Counter
+
             img = Image.open(logo_path).convert("RGB")
-            # Resize for speed
-            img = img.resize((80, 80))
-            pixels = list(img.getdata())
+            img = img.resize((120, 120))
 
-            # Filter out near-white, near-black, and very gray pixels
-            filtered = []
-            for r, g, b in pixels:
-                brightness = (r + g + b) / 3
-                saturation = max(r, g, b) - min(r, g, b)
-                if brightness < 240 and brightness > 30 and saturation > 40:
-                    filtered.append((r, g, b))
+            # Quantize to 16 palette entries — real distinct colours, no averaging
+            # Fallback to integer 0 (MEDIANCUT) for Pillow < 9.1.0 compatibility
+            _mediancut = getattr(getattr(Image, 'Quantize', None), 'MEDIANCUT', 0)
+            quantized = img.quantize(colors=16, method=_mediancut)
+            palette_img = quantized.convert("RGB")
 
-            if not filtered:
-                return FALLBACK
-
-            # Average the remaining pixels to get dominant color
-            avg_r = sum(p[0] for p in filtered) / len(filtered)
-            avg_g = sum(p[1] for p in filtered) / len(filtered)
-            avg_b = sum(p[2] for p in filtered) / len(filtered)
-
-            # Make it slightly darker for readability on white paper
-            darken = 0.8
-            return (
-                min(avg_r / 255 * darken, 1.0),
-                min(avg_g / 255 * darken, 1.0),
-                min(avg_b / 255 * darken, 1.0),
+            # Count pixel frequency per palette colour (passed through filter)
+            pixel_counts = Counter(
+                px for px in palette_img.getdata() if _is_valid(*px)
             )
+
+            if not pixel_counts:
+                return FALLBACK_BRAND, FALLBACK_SECONDARY
+
+            # ── BRAND: darkest + most saturated colour ─────────────────────
+            # Score = saturation × (255 - brightness)²
+            # This heavily favours dark, vivid corporate colours (e.g. TVS blue)
+            # over bright graphic accents (e.g. orange deer) regardless of
+            # how many pixels they occupy.
+            def _brand_score(rgb):
+                r, g, b = rgb
+                brightness  = (r + g + b) / 3
+                saturation  = max(r, g, b) - min(r, g, b)
+                return saturation * ((255 - brightness) ** 2)
+
+            all_colors = list(pixel_counts.keys())
+            brand_rgb  = max(all_colors, key=_brand_score)
+            brand      = _norm(*brand_rgb)
+
+            # ── SECONDARY: most frequent colour visually distinct from BRAND ─
+            # (the accent/graphic colour, e.g. the orange arrow in TVS logo)
+            secondary = None
+            for rgb, _ in pixel_counts.most_common():
+                if rgb == brand_rgb:
+                    continue
+                dist = sum((a - b) ** 2 for a, b in zip(rgb, brand_rgb)) ** 0.5
+                if dist > 55:   # Euclidean RGB distance threshold
+                    secondary = _norm(*rgb, darken=0.90)
+                    break
+
+            # Fallback: no distinct second colour — derive a lighter tint of BRAND
+            if secondary is None:
+                secondary = tuple(min(c + 0.22, 1.0) for c in brand)
+
+            app_logger.info(f"Logo Adaptive — BRAND={brand}  SECONDARY={secondary}")
+            return brand, secondary
+
         except Exception as e:
-            app_logger.warning(f"Could not extract logo color: {e}")
-            return FALLBACK
+            app_logger.warning(f"Could not extract logo colors: {e}")
+            return FALLBACK_BRAND, FALLBACK_SECONDARY
 
     # ── Amount in Words ───────────────────────────────────────────────
     @staticmethod
@@ -97,10 +141,8 @@ class InvoiceGenerator:
 
     # ── Main Generator ────────────────────────────────────────────────
     def generate_invoice_pdf(self, inv_meta, items):
-        if not os.path.exists("invoices"):
-            os.makedirs("invoices")
-
-        file_path = os.path.join("invoices", f"{inv_meta['invoice_id']}.pdf")
+        invoices_dir = get_app_data_path("invoices")  # always writable (AppData or project root)
+        file_path = os.path.join(invoices_dir, f"{inv_meta['invoice_id']}.pdf")
 
         c = canvas.Canvas(file_path, pagesize=A4)
         W, H = A4
@@ -118,7 +160,10 @@ class InvoiceGenerator:
         # ── Item Data Post-Processing (Hybrid HSN Fallback) ──
         for item in items:
             # item: [idx, sys_id, name, HSN, GST%, Disc%, Qty, Rate, Total]
-            if not item[3] or str(item[3]).strip().upper() == 'N/A':
+            # Coerce None values to "N/A"
+            current_hsn = str(item[3]).strip().upper() if item[3] is not None else "N/A"
+            item[3] = current_hsn 
+            if current_hsn == 'N/A' or current_hsn == 'NONE' or not current_hsn:
                 rule = self.db_manager.search_hsn_rule(item[2])
                 if rule:
                     item[3] = rule['hsn_code']
@@ -156,15 +201,16 @@ class InvoiceGenerator:
             BODY_FONT = "Helvetica"
 
         elif theme == "Logo Adaptive":
-            # Extract from logo
+            # Extract the 2 most dominant DISTINCT colours from the logo separately
             if logo_path and os.path.exists(logo_path):
-                BRAND = self._extract_logo_color(logo_path)
+                BRAND, SECONDARY = self._extract_logo_colors(logo_path)
             else:
-                BRAND = (0.10, 0.31, 0.63) # Fallback
-            SECONDARY = BRAND
+                BRAND     = (0.10, 0.31, 0.63)   # Fallback: Navy blue
+                SECONDARY = (0.85, 0.65, 0.13)   # Fallback: Gold
 
         # Read new settings
-        show_gst_breakdown = settings.get("show_gst_breakdown", "true") == "true"
+        show_gst_breakdown = str(settings.get("show_gst_breakdown", "true")).lower() in ["true", "1", "yes"]
+        show_hsn = str(settings.get("show_hsn_on_invoice", "false")).lower() in ["true", "1", "yes"]
         gst_mode = settings.get("gst_mode", "CGST+SGST")
         default_gst_rate = float(settings.get("default_gst_rate", "18"))
         footer_text = settings.get("invoice_footer_text", "Thank you for your business! | E. & O.E.")
@@ -276,25 +322,59 @@ class InvoiceGenerator:
         # Extra Fields
         extra_y = y - 18 * mm
         extra_details = inv_meta.get("extra_details", {})
+
+        # ── Revised Invoice Badge ──────────────────────────────────────
+        if extra_details.get("_is_edited"):
+            AMBER = (0.90, 0.50, 0.00)
+            badge_w = 38 * mm
+            badge_h = 6 * mm
+            badge_x = MARGIN_R - badge_w
+            badge_y = extra_y - badge_h
+            c.setFillColorRGB(*AMBER)
+            c.roundRect(badge_x, badge_y, badge_w, badge_h, 1.5 * mm, fill=1, stroke=0)
+            c.setFillColorRGB(1, 1, 1)
+            c.setFont(HEADER_FONT, 8)
+            c.drawCentredString(badge_x + badge_w / 2, badge_y + 1.5 * mm, "\u2605 REVISED INVOICE")
+
+        # ── Custom Extra Fields (skip all internal _ keys) ─────────────
         count = 0
         for k, v in extra_details.items():
-            if count > 1: break 
+            if str(k).startswith('_'): continue   # skip internal flags
+            if count > 1: break
             label_x = MARGIN_L if count == 0 else col2_x
+            c.setFillColorRGB(*GRAY)
+            c.setFont(BODY_FONT, 9)
             c.drawString(label_x, extra_y, f"{k}: {v}")
             count += 1
 
-        # ━━━━━ ITEMS TABLE (Modern Clean) ━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+        # ━━━━━ ITEMS TABLE (Dual-Mode Auto-Switch) ━━━━━━━
         y = extra_y - 15 * mm
         
-        # Columns (Adjusted for Disc % column and spacing)
-        col_sno = MARGIN_L + 2 * mm
-        col_desc = MARGIN_L + 11 * mm
-        col_hsn = MARGIN_R - 95 * mm
-        col_gst = MARGIN_R - 76 * mm
-        col_disc = MARGIN_R - 62 * mm  # New Column
-        col_qty = MARGIN_R - 48 * mm
-        col_rate = MARGIN_R - 33 * mm
-        col_amt = MARGIN_R - 2 * mm
+        # Determine Mode: B2B or explicitly Show HSN
+        cust_gstin = inv_meta.get('customer_gstin', '').strip()
+        is_b2b = bool(cust_gstin)
+        
+        available_width = W - (2 * MARGIN_L)
+        
+        if is_b2b or show_hsn:
+            # 10 Columns: #  PART-CODE  DESCRIPTION  HSN  QTY  MRP  DISC%  RATE  GST%  AMOUNT
+            # fixed col widths for all cols EXCEPT description:
+            fixed_widths = [20, 65, 40, 30, 40, 35, 40, 35, 65]   # 9 cols (no desc)
+            desc_width = available_width - sum(fixed_widths)
+            col_widths_pt = [20, 65, desc_width, 40, 30, 40, 35, 40, 35, 65]
+            mode_hsn = True
+        else:
+            # 8 Columns (B2C): #  PART-CODE  DESCRIPTION  QTY  MRP  DISC%  GST%  AMOUNT
+            # fixed col widths for all cols EXCEPT description:
+            fixed_widths = [20, 65, 35, 45, 40, 40, 70]   # 7 cols (no desc)
+            desc_width = available_width - sum(fixed_widths)
+            col_widths_pt = [20, 65, desc_width, 35, 45, 40, 40, 70]
+            mode_hsn = False
+
+        col_x = [MARGIN_L]
+        for w in col_widths_pt:
+            col_x.append(col_x[-1] + w)
+        TABLE_W = available_width
 
         def clean_float(val):
             try:
@@ -308,21 +388,38 @@ class InvoiceGenerator:
         def draw_header(c, y):
             # Header Bar - Retain Brand Color
             c.setFillColorRGB(*BRAND)
-            c.rect(MARGIN_L, y - 8 * mm, CONTENT_W, 8 * mm, fill=1, stroke=0)
+            c.rect(MARGIN_L, y - 8 * mm, TABLE_W, 8 * mm, fill=1, stroke=0)
             
             c.setFillColorRGB(*WHITE)
             c.setFont(HEADER_FONT, 8)
-            c.drawString(col_sno, y - 5.5 * mm, "#")
-            c.drawString(col_desc, y - 5.5 * mm, "DESCRIPTION")
-            c.drawString(col_hsn, y - 5.5 * mm, "HSN")
-            c.drawRightString(col_gst, y - 5.5 * mm, "GST%")
-            c.drawRightString(col_disc, y - 5.5 * mm, "DISC%")
-            c.drawRightString(col_qty, y - 5.5 * mm, "QTY")
-            c.drawRightString(col_rate, y - 5.5 * mm, "RATE")
-            c.drawRightString(col_amt, y - 5.5 * mm, "AMOUNT")
+            pad_l = 2 * mm
+            pad_r = 2 * mm
+            
+            # Left align
+            c.drawString(col_x[0] + pad_l, y - 5.5 * mm, "#")
+            c.drawString(col_x[1] + pad_l, y - 5.5 * mm, "PART CODE")
+            c.drawString(col_x[2] + pad_l, y - 5.5 * mm, "DESCRIPTION")
+            
+            # Right align
+            if mode_hsn:
+                c.drawRightString(col_x[4] - pad_r, y - 5.5 * mm, "HSN")
+                c.drawRightString(col_x[5] - pad_r, y - 5.5 * mm, "QTY")
+                c.drawRightString(col_x[6] - pad_r, y - 5.5 * mm, "MRP")
+                c.drawRightString(col_x[7] - pad_r, y - 5.5 * mm, "DISC%")
+                c.drawRightString(col_x[8] - pad_r, y - 5.5 * mm, "RATE")
+                c.drawRightString(col_x[9] - pad_r, y - 5.5 * mm, "GST%")
+                c.drawRightString(col_x[10] - pad_r, y - 5.5 * mm, "AMOUNT")
+            else:
+                c.drawRightString(col_x[4] - pad_r, y - 5.5 * mm, "QTY")
+                c.drawRightString(col_x[5] - pad_r, y - 5.5 * mm, "MRP")
+                c.drawRightString(col_x[6] - pad_r, y - 5.5 * mm, "DISC%")
+                c.drawRightString(col_x[7] - pad_r, y - 5.5 * mm, "GST%")
+                c.drawRightString(col_x[8] - pad_r, y - 5.5 * mm, "AMOUNT")
+                
             return y - 8 * mm
 
         y = draw_header(c, y)
+        y -= 2 * mm   # gap between header and first data row
         
         page_num = 1
         
@@ -335,57 +432,97 @@ class InvoiceGenerator:
                 page_num += 1
                 y = H - 20 * mm
                 y = draw_header(c, y)
+                y -= 2 * mm   # gap after repeated header on new page
             
             # Row
             if idx % 2 == 0:
                 c.setFillColorRGB(*LIGHT_GRAY)
-                c.rect(MARGIN_L, y - ROW_H, CONTENT_W, ROW_H, fill=1, stroke=0)
+                c.rect(MARGIN_L, y - ROW_H, TABLE_W, ROW_H, fill=1, stroke=0)
                 
             c.setFillColorRGB(0.2, 0.2, 0.2)
             c.setFont(BODY_FONT, 9)
             
             # Content
+            pad_l = 2 * mm
+            pad_r = 2 * mm
+            
             # SNo
-            c.drawString(col_sno, y - 6 * mm, str(item[0]))
-            
-            # Desc
-            desc_text = str(item[2])
-            if len(desc_text) > 30: desc_text = desc_text[:30] + "..."
-            c.drawString(col_desc, y - 6 * mm, desc_text)
-            
-            # HSN
-            hsn_text = str(item[3])
-            c.drawString(col_hsn - 2 * mm, y - 6 * mm, hsn_text)
-            
-            # GST%
-            gst_val = clean_float(item[4])
-            c.drawRightString(col_gst, y - 6 * mm, f"{gst_val:.0f}%")
+            c.drawString(col_x[0] + pad_l, y - 6 * mm, str(item[0]))
 
-            # DISC%
+            # PART CODE
+            part_code = str(item[1])
+            c.drawString(col_x[1] + pad_l, y - 6 * mm, part_code)
+            
+            # DESCRIPTION (Paragraph Auto-Wrap - No Bleeding)
+            desc_text = str(item[2])
+            desc_style = ParagraphStyle(
+                name='DescStyle',
+                fontName=BODY_FONT,
+                fontSize=7.5,
+                leading=8.5,
+                alignment=0
+            )
+            desc_paragraph = Paragraph(desc_text, desc_style)
+            
+            # Width strictly constrained to its column boundary (accounting for padding)
+            p_width = col_widths_pt[2] - (pad_l + pad_r)
+            p_w, p_h = desc_paragraph.wrapOn(c, p_width, ROW_H)
+            
+            # Vertically center the wrapped paragraph inside the fixed row height
+            p_y = y - ROW_H + (ROW_H - p_h) / 2
+            desc_paragraph.drawOn(c, col_x[2] + pad_l, p_y)
+            
+            # Base Details
+            qty_display = f"{float(item[6]):g}"   # string for table cells
+            qty_num     = max(float(item[6]), 0.01) # float for math
+            raw_mrp = clean_float(item[7])
             disc_val = clean_float(item[5])
-            c.drawRightString(col_disc, y - 6 * mm, f"{disc_val:.0f}%")
+            gst_val = clean_float(item[4])
+            total_val = clean_float(item[8])
             
-            # Qty
-            qty_val = str(item[6])
-            c.drawRightString(col_qty, y - 6 * mm, qty_val)
-            
-            # Rate (MRP)
-            rate_val = clean_float(item[7])
-            c.drawRightString(col_rate, y - 6 * mm, f"{rate_val:.2f}")
-            
-            # Amount (Final)
-            amt_val = clean_float(item[8])
-            c.setFont(HEADER_FONT, 9)
-            c.drawRightString(col_amt, y - 6 * mm, f"{amt_val:.2f}")
+            if mode_hsn:
+                # 10 Columns
+                # HSN
+                hsn_text = str(item[3])
+                if not hsn_text or hsn_text == "None": hsn_text = ""
+                c.drawRightString(col_x[4] - pad_r, y - 6 * mm, hsn_text)
+                
+                # QTY, MRP, DISC%
+                c.drawRightString(col_x[5] - pad_r, y - 6 * mm, qty_display)
+                c.drawRightString(col_x[6] - pad_r, y - 6 * mm, f"{raw_mrp:.2f}")
+                c.drawRightString(col_x[7] - pad_r, y - 6 * mm, f"{disc_val:.0f}%")
+                
+                # RATE = unit taxable base (excl. GST) = (AMOUNT / qty) / (1 + GST%)
+                unit_incl = total_val / qty_num   # GST-inclusive per unit
+                rate_val  = unit_incl / (1 + gst_val / 100) if gst_val > 0 else unit_incl
+                c.drawRightString(col_x[8] - pad_r, y - 6 * mm, f"{rate_val:.2f}")
+                
+                # GST%, AMOUNT
+                c.drawRightString(col_x[9] - pad_r, y - 6 * mm, f"{gst_val:.0f}%")
+                c.setFont(HEADER_FONT, 9)
+                c.drawRightString(col_x[10] - pad_r, y - 6 * mm, f"{total_val:.2f}")
+            else:
+                # 8 Columns (B2C)
+                # QTY, MRP, DISC%
+                c.drawRightString(col_x[4] - pad_r, y - 6 * mm, qty_display)
+                c.drawRightString(col_x[5] - pad_r, y - 6 * mm, f"{raw_mrp:.2f}")
+                c.drawRightString(col_x[6] - pad_r, y - 6 * mm, f"{disc_val:.0f}%")
+                
+                # GST%, AMOUNT
+                c.drawRightString(col_x[7] - pad_r, y - 6 * mm, f"{gst_val:.0f}%")
+                c.setFont(HEADER_FONT, 9)
+                c.drawRightString(col_x[8] - pad_r, y - 6 * mm, f"{total_val:.2f}")
             c.setFont(BODY_FONT, 9)
             
             y -= ROW_H
 
         # ━━━━━ SUMMARY SECTION ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
         # Ensure space
-        if y < 60 * mm:
+        # Ensure enough space for summary + QR + signatory + footer
+        if y < 90 * mm:
             c.showPage()
             y = H - 40 * mm
+
 
         # Line between Items and Summary
         c.setStrokeColorRGB(*BRAND)
@@ -394,10 +531,16 @@ class InvoiceGenerator:
         
         y -= 10 * mm
         
+        # --- ACCOUNTING ROUND OFF ---
+        exact_total = float(inv_meta['total'])
+        rounded_total = float(round(exact_total))
+        round_off = rounded_total - exact_total
+
         # Left Side: Words & Terms
+        top_summary_y = y
         c.setFont(BODY_FONT, 9)
         c.setFillColorRGB(*GRAY)
-        words = self._amount_in_words(inv_meta['total'])
+        words = self._amount_in_words(rounded_total)
         c.drawString(MARGIN_L, y, "Amount in Words:")
         c.setFillColorRGB(*SECONDARY)
         c.setFont(HEADER_FONT, 9)
@@ -407,7 +550,7 @@ class InvoiceGenerator:
         card_w = 70 * mm
         card_x = MARGIN_R - card_w
         
-          # Total MRP
+        # Total MRP
         c.setFillColorRGB(*GRAY)
         c.setFont(BODY_FONT, 10)
         c.drawString(card_x, y, "Total MRP:")
@@ -433,12 +576,44 @@ class InvoiceGenerator:
         c.setFillColorRGB(*BLACK)
         c.drawRightString(MARGIN_R, y, f"{inv_meta.get('taxable_value', 0.0):.2f}")
 
-        # GST Included
+        # GST Breakdown (Optional Split vs Single)
+        total_gst_val = float(inv_meta.get('gst_included', 0.0))
+        
+        if show_gst_breakdown and total_gst_val > 0:
+            if gst_mode == "IGST (Inter-State)":
+                y -= 6 * mm
+                c.setFillColorRGB(*GRAY)
+                c.drawString(card_x, y, "IGST (Included):")
+                c.setFillColorRGB(*BLACK)
+                c.drawRightString(MARGIN_R, y, f"{total_gst_val:.2f}")
+            else:
+                # CGST/SGST Split
+                half_gst = total_gst_val / 2
+                y -= 6 * mm
+                c.setFillColorRGB(*GRAY)
+                c.drawString(card_x, y, "CGST (Included):")
+                c.setFillColorRGB(*BLACK)
+                c.drawRightString(MARGIN_R, y, f"{half_gst:.2f}")
+                
+                y -= 6 * mm
+                c.setFillColorRGB(*GRAY)
+                c.drawString(card_x, y, "SGST (Included):")
+                c.setFillColorRGB(*BLACK)
+                c.drawRightString(MARGIN_R, y, f"{half_gst:.2f}")
+        else:
+            y -= 6 * mm
+            c.setFillColorRGB(*GRAY)
+            c.drawString(card_x, y, "GST (Included):")
+            c.setFillColorRGB(*BLACK)
+            c.drawRightString(MARGIN_R, y, f"{total_gst_val:.2f}")
+
+        # Round Off
         y -= 6 * mm
         c.setFillColorRGB(*GRAY)
-        c.drawString(card_x, y, "GST (Included):")
+        c.drawString(card_x, y, "Round Off:")
         c.setFillColorRGB(*BLACK)
-        c.drawRightString(MARGIN_R, y, f"{inv_meta.get('gst_included', 0.0):.2f}")
+        sign = "+" if round_off >= 0 else "-"
+        c.drawRightString(MARGIN_R, y, f"{sign} {abs(round_off):.2f}")
 
         # Grand Total Bar (Retain Brand Color)
         y -= 10 * mm
@@ -449,20 +624,177 @@ class InvoiceGenerator:
         c.setFont(HEADER_FONT, 12)
         c.drawString(card_x + 2 * mm, y, "GRAND TOTAL")
         c.setFont(HEADER_FONT, 14)
-        c.drawRightString(MARGIN_R, y - 1 * mm, f"Rs. {inv_meta['total']:.2f}")
+        c.drawRightString(MARGIN_R, y - 1 * mm, f"Rs. {rounded_total:.2f}")
         
+        # ━━━━━ QR CODE + PAYMENT + SIGNATORY SECTION ━━━━━━━━━━━━━━
+        # QR Code & Payment are aligned higher up on the Left
+        # Signatory remains lower on the Right
+        sig_zone_y = y - 5 * mm   # Bottom boundary for Signatory
+        qr_size    = 22 * mm      # Cleaner, more compact QR scale
+        qr_top_y   = top_summary_y - 9 * mm  # Tightest fit directly below Words
+
+        # ── Read Payment QR settings (fully user-configurable from Settings page) ──
+        upi_enabled = str(settings.get("payment_qr_enabled", "true")).lower() in ["true", "1", "yes"]
+        UPI_ID      = settings.get("payment_upi_id", "").strip()
+        pay_name    = settings.get("payment_display_name", "").strip() or shop_name
+
+        # ── Read payment breakdown EARLY (needed for QR condition + block) ────
+        pay_cash  = float(inv_meta.get("payment_cash", rounded_total))
+        pay_upi   = float(inv_meta.get("payment_upi",  0.0))
+        pay_due   = float(inv_meta.get("payment_due",  0.0))
+        pay_mode  = str(inv_meta.get("payment_mode", "CASH"))
+
+        # ── LEFT: UPI Payment QR ──────────────────────────────────────
+        # QR is only needed when UPI money is involved:
+        #   • pay_upi > 0  → customer already paid some via UPI (show amount paid)
+        #   • pay_due > 0  → remaining balance to be collected via UPI
+        upi_involved = (pay_upi > 0 or pay_due > 0)
+        if upi_enabled and UPI_ID and upi_involved:
+            # QR amount: outstanding due first, else the UPI portion already paid
+            if pay_due > 0:
+                qr_amount = pay_due          # collect remaining balance via UPI
+            elif pay_upi > 0:
+                qr_amount = pay_upi          # confirm the UPI portion already paid
+            else:
+                qr_amount = inv_meta.get("_qr_amount", rounded_total)
+            upi_amount  = f"{qr_amount:.2f}"
+            # URL-encode payee name for safety
+            safe_pay_name = pay_name.replace(" ", "%20")
+            upi_string  = (
+                f"upi://pay?pa={UPI_ID}&pn={safe_pay_name}"
+                f"&am={upi_amount}&cu=INR"
+                f"&tn=Invoice%20{inv_meta['invoice_id']}"
+            )
+            try:
+                import qrcode as _qr
+                import tempfile, io
+                qr_img = _qr.QRCode(
+                    version=2,
+                    error_correction=_qr.constants.ERROR_CORRECT_M,
+                    box_size=4,
+                    border=2,
+                )
+                qr_img.add_data(upi_string)
+                qr_img.make(fit=True)
+                pil_img = qr_img.make_image(fill_color="black", back_color="white")
+                # Save to a temp file so ReportLab can read it
+                tmp_qr = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+                pil_img.save(tmp_qr.name)
+                tmp_qr.close()
+                qr_x = MARGIN_L
+                c.drawImage(tmp_qr.name, qr_x, qr_top_y - qr_size,
+                            width=qr_size, height=qr_size, mask='auto')
+                # Store for deferred cleanup after c.save() — Windows keeps file locks open
+                self._pending_qr_cleanup = tmp_qr.name
+                c.setFillColorRGB(*GRAY)
+                c.setFont(BODY_FONT, 7)
+                # Label: "Scan to Pay Due" if balance, else "Scan to Pay via UPI"
+                scan_label = "Scan to Pay Due" if pay_due > 0 else "Scan to Pay via UPI"
+                c.drawCentredString(qr_x + qr_size / 2, qr_top_y - qr_size - 3 * mm,
+                                    scan_label)
+                c.setFont(HEADER_FONT, 7)
+                c.drawCentredString(qr_x + qr_size / 2, qr_top_y - qr_size - 7 * mm,
+                                    UPI_ID)
+            except Exception as _qr_err:
+                # If qrcode not installed, show UPI ID as text fallback
+                c.setFillColorRGB(*GRAY)
+                c.setFont(BODY_FONT, 8)
+                c.drawString(MARGIN_L, qr_top_y - 8 * mm, f"Pay via UPI: {UPI_ID}")
+
+        # ── PAYMENT BREAKDOWN BLOCK (between Grand Total and Signatory) ──────────
+        pay_block_x = MARGIN_L + 25 * mm   # Fit snugly beside QR Core
+        pay_block_y = qr_top_y - 1 * mm
+        pay_col_w   = 35 * mm              # Narrow constraint to stop rightward bleed
+
+        # Only render if user has saved at least one meaningful payment field
+        has_pay_data = (pay_cash + pay_upi + pay_due) > 0 or pay_mode != "CASH"
+
+        if has_pay_data:
+            # Mini header
+            c.setFillColorRGB(*GRAY)
+            c.setFont(HEADER_FONT, 7.5)
+            c.drawString(pay_block_x, pay_block_y, "PAYMENT RECEIVED")
+            pay_block_y -= 5 * mm
+
+            row_h = 4.5 * mm
+
+            def _pay_row(label, amount, color_rgb, bold=False):
+                nonlocal pay_block_y
+                c.setFillColorRGB(*GRAY)
+                c.setFont(BODY_FONT, 8)
+                c.drawString(pay_block_x + 2 * mm, pay_block_y, label)
+                c.setFillColorRGB(*color_rgb)
+                c.setFont(HEADER_FONT if bold else BODY_FONT, 8)
+                c.drawRightString(pay_block_x + pay_col_w, pay_block_y, f"Rs. {amount:,.2f}")
+                pay_block_y -= row_h
+
+            GREEN  = (0.0, 0.6, 0.3)
+            CYAN_C = (0.0, 0.5, 0.8)
+            RED_C  = (0.8, 0.1, 0.1)
+
+            if pay_cash > 0:
+                _pay_row("Cash Received :", pay_cash, GREEN)
+            if pay_upi > 0:
+                _pay_row("UPI Received :",  pay_upi,  CYAN_C)
+                
+            pay_block_y -= 1 * mm # Extra margin to prevent badge overlap
+
+            if pay_due > 0:
+                # Highlighted due row
+                due_box_y = pay_block_y - 1.5 * mm
+                c.setFillColorRGB(0.98, 0.9, 0.9)
+                c.roundRect(pay_block_x, due_box_y, pay_col_w + 2 * mm, row_h + 2 * mm,
+                            1.5 * mm, fill=1, stroke=0)
+                _pay_row("BALANCE DUE :", pay_due, RED_C, bold=True)
+            else:
+                # Paid in full badge
+                badge_h = 5.5 * mm
+                badge_w = 34 * mm
+                badge_y = pay_block_y - 4 * mm
+                c.setFillColorRGB(0.9, 0.98, 0.9)
+                c.setStrokeColorRGB(*GREEN)
+                c.roundRect(pay_block_x, badge_y, badge_w, badge_h, 1.5 * mm, fill=1, stroke=1)
+                
+                c.setFillColorRGB(*GREEN)
+                c.setFont(HEADER_FONT, 8)
+                c.drawCentredString(pay_block_x + (badge_w / 2), badge_y + 1.5 * mm, "\u2713 PAID IN FULL")
+                pay_block_y -= 6 * mm
+
+
+        # ── RIGHT: Authorised Signatory  ──────────────────────────────
+        sig_x = MARGIN_R - 55 * mm          # right-aligned block, ~55mm wide
+        sig_top = sig_zone_y - 2 * mm
+
+        # "For <ShopName>" header
+        c.setFillColorRGB(*BRAND)
+        c.setFont(HEADER_FONT, 9)
+        c.drawRightString(MARGIN_R, sig_top, f"For  {shop_name}")
+
+        # Blank signature area (dotted line)
+        sig_line_y = sig_top - 18 * mm
+        c.setStrokeColorRGB(*GRAY)
+        c.setLineWidth(0.5)
+        c.setDash(2, 3)
+        c.line(sig_x, sig_line_y, MARGIN_R, sig_line_y)
+        c.setDash()   # reset dash
+
+        # "Authorized Signatory" label
+        c.setFillColorRGB(*GRAY)
+        c.setFont(BODY_FONT, 8)
+        c.drawRightString(MARGIN_R, sig_line_y - 5 * mm, "Authorized Signatory")
+
         # ━━━━━ FOOTER (Minimal - No Band) ━━━━━━━━━━━━━━━━━━━━━━━━
         footer_y = 10 * mm
-        
+
         # Simple Separator
         c.setStrokeColorRGB(*GRAY)
         c.setLineWidth(0.5)
         c.line(MARGIN_L, footer_y + 8 * mm, MARGIN_R, footer_y + 8 * mm)
-        
+
         c.setFillColorRGB(*GRAY)
         c.setFont(BODY_FONT, 8)
         c.drawCentredString(W / 2, footer_y + 4 * mm, footer_text)
-        
+
         # Developer Credit
         c.setFont(HEADER_FONT, 7)
         c.setFillColorRGB(*SECONDARY)
@@ -480,6 +812,16 @@ class InvoiceGenerator:
             c.restoreState()
 
         c.save()
+
+        # B12: Deferred QR temp file cleanup after file handle is released by c.save()
+        if hasattr(self, '_pending_qr_cleanup') and self._pending_qr_cleanup:
+            import os as _os
+            try:
+                _os.unlink(self._pending_qr_cleanup)
+            except Exception:
+                pass
+            self._pending_qr_cleanup = None
+
         return file_path
 
     def regenerate_invoice(self, invoice_id):
@@ -518,9 +860,14 @@ class InvoiceGenerator:
              # Try to find tax info in saved tax_details
              tax_info = next((t for t in tax_details if t.get('id') == sys_id), {})
              
-             # Calculate effective discount % (Legacy or New)
-             raw_mrp = item.get('base_price', item.get('price', 0.0))
-             discounted_total = item.get('total', 0.0)
+             # Use _final_total from stored tax_details for accurate amounts (B6 fix)
+             # For legacy invoices without tax_details, fall back to item['total']
+             final_total = tax_info.get('_final_total')
+             if final_total and final_total > 0:
+                 discounted_total = final_total
+             else:
+                 discounted_total = item.get('total', 0.0)
+
              qty = item.get('qty', 1)
              unit_discounted = discounted_total / qty if qty > 0 else 0
              
@@ -528,12 +875,17 @@ class InvoiceGenerator:
              if raw_mrp > 0:
                  disc_perc = (1 - (unit_discounted / raw_mrp)) * 100
              
+             # Robust HSN Extraction
+             hsn_val = tax_info.get('hsn') or item.get('hsn')
+             if hsn_val is None or str(hsn_val).strip() == "":
+                 hsn_val = 'N/A'
+                 
              pdf_items.append([
                  idx, 
                  sys_id,
                  item.get('name', 'Item'),
-                 tax_info.get('hsn', item.get('hsn', 'N/A')),
-                 tax_info.get('gst_rate', item.get('gst_rate', 18.0)),
+                 str(hsn_val),
+                 tax_info.get('gst_rate') or item.get('gst_rate', 18.0),
                  disc_perc, # Index 5: DISC%
                  qty,
                  raw_mrp, # Rate (MRP)

@@ -11,6 +11,7 @@ from styles import (COLOR_BACKGROUND, COLOR_SURFACE, COLOR_ACCENT_CYAN, COLOR_AC
 import random
 import os
 import shutil
+from path_utils import get_app_data_path  # type: ignore
 
 class SecurityCard(QFrame):
     """
@@ -49,23 +50,45 @@ class SecurityCard(QFrame):
         # Avatar logic
         avatar_color = COLOR_ACCENT_GREEN if self.role == "ADMIN" else COLOR_ACCENT_CYAN
         if self.profile_pic and os.path.exists(self.profile_pic):
+             from PyQt6.QtGui import QPainterPath
              avatar = QLabel()
              avatar.setFixedSize(50, 50)
              pixmap = QPixmap(self.profile_pic)
-             # Circular Mask
-             mask = QBitmap(50, 50)
-             mask.fill(Qt.GlobalColor.color0)
-             painter = QPainter(mask)
-             painter.setBrush(Qt.GlobalColor.color1)
-             painter.drawEllipse(0, 0, 50, 50)
+             
+             # perfectly crop to 50x50 center to prevent bleeding out of label
+             scaled = pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
+             crop_x = (scaled.width() - 50) // 2
+             crop_y = (scaled.height() - 50) // 2
+             cropped = scaled.copy(crop_x, crop_y, 50, 50)
+             
+             circular = QPixmap(50, 50)
+             circular.fill(Qt.GlobalColor.transparent)
+             
+             painter = QPainter(circular)
+             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+             
+             path = QPainterPath()
+             # Clip exactly inside the border
+             path.addEllipse(1, 1, 48, 48)
+             painter.setClipPath(path)
+             
+             painter.drawPixmap(0, 0, cropped)
+             
+             # Now draw the cyan/green border directly onto the image
+             painter.setClipping(False)
+             from PyQt6.QtGui import QPen, QColor
+             pen = QPen(QColor(avatar_color))
+             pen.setWidth(2)
+             painter.setPen(pen)
+             painter.setBrush(Qt.BrushStyle.NoBrush)
+             painter.drawEllipse(1, 1, 48, 48)
+             
              painter.end()
              
-             scaled = pixmap.scaled(50, 50, Qt.AspectRatioMode.KeepAspectRatioByExpanding, Qt.TransformationMode.SmoothTransformation)
-             scaled.setMask(mask)
-             avatar.setPixmap(scaled)
+             avatar.setPixmap(circular)
              
-             # Border
-             avatar.setStyleSheet(f"border: 2px solid {avatar_color}; border-radius: 25px;")
+             # Clean CSS - No borders needed as it's baked in the image
+             avatar.setStyleSheet("background: transparent; border: none;")
         else:
             # Fallback Initials
             avatar = QLabel(self.username[:1].upper())
@@ -86,10 +109,10 @@ class SecurityCard(QFrame):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(2)
         lbl_name = QLabel(self.username.upper())
-        lbl_name.setStyleSheet(f"color: white; font-weight: bold; font-size: 16px; letter-spacing: 1px;")
+        lbl_name.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 15px; font-weight: bold; background: transparent;")
         
         lbl_role = QLabel(f"[{self.role}]")
-        lbl_role.setStyleSheet(f"color: {avatar_color}; font-size: 11px; font-weight: bold;")
+        lbl_role.setStyleSheet(f"color: {ui_theme.COLOR_TEXT_MUTED}; font-size: 11px; font-weight: bold; letter-spacing: 1px; background: transparent;")
         
         info_layout.addWidget(lbl_name)
         info_layout.addWidget(lbl_role)
@@ -98,7 +121,8 @@ class SecurityCard(QFrame):
         
         # Status Light
         status = QLabel("●")
-        status.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-size: 12px;") 
+        status_color = COLOR_ACCENT_GREEN if self.role == "ADMIN" else COLOR_ACCENT_CYAN
+        status.setStyleSheet(f"color: {status_color}; font-size: 14px; background: transparent;")
         header_layout.addWidget(status)
         
         layout.addLayout(header_layout)
@@ -111,10 +135,10 @@ class SecurityCard(QFrame):
         
         # Details
         lbl_login_title = QLabel("LAST LOGIN RECORDED:")
-        lbl_login_title.setStyleSheet("color: #666; font-size: 9px; font-weight: bold;")
+        lbl_login_title.setStyleSheet(f"color: {ui_theme.COLOR_TEXT_MUTED}; font-size: 10px; font-weight: bold; letter-spacing: 1px; background: transparent;")
         
         lbl_login_val = QLabel(f"{self.last_login}")
-        lbl_login_val.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 11px; font-family: 'Consolas';")
+        lbl_login_val.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY}; font-size: 13px; background: transparent;")
         
         layout.addWidget(lbl_login_title)
         layout.addWidget(lbl_login_val)
@@ -128,7 +152,7 @@ class SecurityCard(QFrame):
         btn_history = QPushButton("HISTORY")
         btn_history.setFlat(True)
         btn_history.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_history.setStyleSheet(f"color: #888; font-size: 10px; text-decoration: underline;")
+        btn_history.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 10px; border: none; text-decoration: underline;")
         btn_history.clicked.connect(lambda: self.action_triggered.emit("history", self.user_id))
         row1.addWidget(btn_history)
         row1.addStretch()
@@ -163,7 +187,6 @@ class SecurityCard(QFrame):
              
              row2.addWidget(btn_revoke)
              
-             # Reset Key (Admin only feature for others)
              btn_reset = QPushButton("RESET KEY")
              btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
              btn_reset.setStyleSheet(f"color: {COLOR_ACCENT_YELLOW}; border: none; font-size: 9px;")
@@ -256,7 +279,7 @@ class UserDialog(QDialog):
         layout.setContentsMargins(30, 30, 30, 30)
         
         lbl_title = QLabel("USER PROTOCOL" if not user_data else "OVERRIDE IDENTITY")
-        lbl_title.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 18px; font-weight: bold; border: none;")
+        lbl_title.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(lbl_title)
         
         form_layout = QHBoxLayout() # Split Form and Permissions
@@ -297,7 +320,7 @@ class UserDialog(QDialog):
         self.btn_photo.setStyleSheet("background: transparent; border: 1px dashed #555; color: #888; padding: 5px;")
         self.btn_photo.clicked.connect(self.select_photo)
         self.lbl_photo_path = QLabel("No file selected")
-        self.lbl_photo_path.setStyleSheet("color: #555; font-size: 9px;")
+        self.lbl_photo_path.setStyleSheet(ui_theme.get_page_title_style())
         
         if self.profile_path:
              self.lbl_photo_path.setText(os.path.basename(self.profile_path))
@@ -325,17 +348,21 @@ class UserDialog(QDialog):
         # Permissions Section
         self.perm_group = QGroupBox("ACCESS AUTHORIZATION")
         self.perm_group.setStyleSheet(f"QGroupBox {{ color: {COLOR_ACCENT_CYAN}; font-weight: bold; border: 1px solid #333; margin-top: 10px; padding: 15px; border-radius: 8px; }}")
-        perm_layout = QVBoxLayout(self.perm_group)
+        perm_layout = QGridLayout(self.perm_group)
         perm_layout.setSpacing(10)
         
         self.checks = {}
         perms = [
-            ("can_edit_inventory", "✏️ Edit Inventory"),
-            ("can_manage_inventory", "📦 Inventory Management"),
+            ("can_view_dashboard", "🏠 Dashboard Access"),
             ("can_manage_billing", "💳 Billing & Invoicing"),
+            ("can_manage_inventory", "📦 Inventory Management"),
+            ("can_edit_inventory", "✏️ Edit Inventory Items"),
             ("can_manage_orders", "📋 Purchase Orders"),
+            ("can_manage_expenses", "💸 Expense Tracking"),
             ("can_view_reports", "📊 Sales Reports"),
+            ("can_view_catalog", "📖 Parts Catalog"),
             ("can_manage_vendors", "🚚 Vendor Database"),
+            ("can_manage_settings", "⚙️ System Settings"),
             ("can_manage_self", "👤 Edit Own Profile"),
             ("can_backup_data", "💾 System Backups")
         ]
@@ -349,9 +376,10 @@ class UserDialog(QDialog):
             except:
                 pass
         
+        row, col = 0, 0
         for key, label in perms:
             chk = QCheckBox(label)
-            chk.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY};")
+            chk.setStyleSheet(ui_theme.get_checkbox_style())
             
             if user_data:
                  chk.setChecked(key in current_perms)
@@ -360,7 +388,12 @@ class UserDialog(QDialog):
                  chk.setChecked(True)
                  
             self.checks[key] = chk
-            perm_layout.addWidget(chk)
+            perm_layout.addWidget(chk, row, col)
+            
+            col += 1
+            if col > 1:
+                col = 0
+                row += 1
             
         layout.addWidget(self.perm_group)
         
@@ -370,7 +403,7 @@ class UserDialog(QDialog):
         btns.rejected.connect(self.reject)
         
         btns.button(QDialogButtonBox.StandardButton.Save).setStyleSheet(ui_theme.get_primary_button_style())
-        btns.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet(f"color: #888; background: transparent; border: 1px solid #555; padding: 8px;")
+        btns.button(QDialogButtonBox.StandardButton.Cancel).setStyleSheet(ui_theme.get_cancel_button_style())
         
         layout.addWidget(btns)
         
@@ -482,7 +515,7 @@ class UserManagementPage(QWidget):
         # Header
         header = QHBoxLayout()
         title = QLabel("SECURITY OPERATIONS CENTER")
-        title.setStyleSheet(f"font-size: 24px; font-weight: 800; color: {COLOR_ACCENT_CYAN}; letter-spacing: 2px;")
+        title.setStyleSheet(ui_theme.get_page_title_style())
         header.addWidget(title)
         
         header.addStretch()
@@ -515,14 +548,14 @@ class UserManagementPage(QWidget):
         dev_layout.setContentsMargins(10, 5, 10, 5)
         
         lbl_dev = QLabel("⚠️ DEV ZONE")
-        lbl_dev.setStyleSheet(f"color: {COLOR_ACCENT_RED}; font-weight: bold; font-family: Consolas; font-size: 10px;")
+        lbl_dev.setStyleSheet(ui_theme.get_page_title_style())
         dev_layout.addWidget(lbl_dev)
         
         dev_layout.addStretch()
         
         btn_reset_inv = QPushButton("RESET INVOICE SERIES")
         btn_reset_inv.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_reset_inv.setStyleSheet(f"background: transparent; border: 1px solid {COLOR_ACCENT_RED}; color: {COLOR_ACCENT_RED}; font-family: Consolas; font-size: 10px; padding: 4px; border-radius: 4px;")
+        btn_reset_inv.setStyleSheet(ui_theme.get_icon_btn_red())
         btn_reset_inv.clicked.connect(self.reset_invoice_sequence)
         dev_layout.addWidget(btn_reset_inv)
         
@@ -605,11 +638,8 @@ class UserManagementPage(QWidget):
             final_pic_path = pic_path
             if pic_path:
                 try:
-                    # Create storage dir if needed
-                    storage_dir = os.path.join(os.getcwd(), "datas", "avatars")
-                    if not os.path.exists(storage_dir):
-                        os.makedirs(storage_dir)
-                    
+                    # Use centralised path — resolves to %APPDATA% when frozen
+                    storage_dir = get_app_data_path(os.path.join("data", "avatars"))
                     # If file is not already in storage, copy it
                     if os.path.dirname(os.path.abspath(pic_path)) != os.path.abspath(storage_dir):
                         ext = os.path.splitext(pic_path)[1]

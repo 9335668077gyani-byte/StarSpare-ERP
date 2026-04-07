@@ -1,6 +1,7 @@
+import ui_theme
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QHBoxLayout, QFrame, QMessageBox)
 from PyQt6.QtCore import Qt
-from styles import COLOR_ACCENT_CYAN, COLOR_BACKGROUND, STYLE_NEON_BUTTON, STYLE_INPUT_CYBER
+from styles import COLOR_ACCENT_CYAN, COLOR_BACKGROUND, STYLE_INPUT_CYBER
 
 class LicenseDialog(QDialog):
     def __init__(self, license_verifier, parent=None):
@@ -42,7 +43,7 @@ class LicenseDialog(QDialog):
         # Buttons
         self.btn_activate = QPushButton("ACTIVATE SYSTEM")
         self.btn_activate.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.btn_activate.setStyleSheet(STYLE_NEON_BUTTON)
+        self.btn_activate.setStyleSheet(ui_theme.get_primary_button_style())
         self.btn_activate.clicked.connect(self.do_activate)
         layout.addWidget(self.btn_activate)
         

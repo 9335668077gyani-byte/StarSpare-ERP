@@ -1,27 +1,41 @@
-reports/
-*.db
+# Byte-compiled / optimized / DLL files
 __pycache__/
-venv/
-*.pdf
-# Sensitive files - never commit
-*.pem
-*.key
-*.lic
-license.lic
-private.pem
-*.p12
-*.pfx
-*.jks
-# Credentials and secrets
-.env
-.env.local
-secrets.txt
-config.ini
-# IDE and OS files
-.vscode/
+*.py[cod]
+*$py.class
+
+# IDEs
 .idea/
-*.swp
-*.swo
-*~
-.DS_Store
-Thumbs.db
+.vscode/
+
+# Virtual Environments
+venv/
+env/
+ENV/
+
+# Build and Distribution folders (PyInstaller, etc.)
+build/
+build2/
+dist/
+*.spec
+*.lnk
+
+# Application logs and debug outputs
+logs/
+*.log
+crash*.txt
+std*.txt
+explore_out*.txt
+test_out*.txt
+schema*.txt
+out.txt
+git_log_user.txt
+gst_test_output.txt
+
+# Databases and User Business Data
+*.db
+*.sqlite3
+*.xlsx
+
+# Reports & Exports
+reports/
+*.pdf

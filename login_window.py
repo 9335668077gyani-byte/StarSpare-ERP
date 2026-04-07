@@ -1,16 +1,18 @@
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QLabel, QLineEdit, QPushButton, QFrame, QHBoxLayout, QGraphicsDropShadowEffect, QWidget, QInputDialog)
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRectF, QPropertyAnimation, pyqtProperty, QEasingCurve
 from PyQt6.QtGui import QColor, QPainter, QPainterPath, QPixmap, QBrush, QPen, QRadialGradient, QConicalGradient
-from styles import COLOR_BACKGROUND, COLOR_ACCENT_CYAN, STYLE_NEON_BUTTON, STYLE_INPUT_CYBER
+from styles import COLOR_BACKGROUND, COLOR_ACCENT_CYAN, STYLE_INPUT_CYBER
 import os
+from path_utils import get_app_data_path  # type: ignore
 
 class AvatarWidget(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setFixedSize(80, 80)
         self.pixmap = None
-        self._wipe_angle = 0 # 0 to 360
+        self._wipe_angle = 0  # 0 to 360
         self._glow_alpha = 0
+        self._anim = None   # keep a stable reference to avoid mid-flight GC crash
         
     @pyqtProperty(float)
     def wipe_angle(self):
@@ -25,15 +27,25 @@ class AvatarWidget(QWidget):
         if image_path and os.path.exists(image_path):
             self.pixmap = QPixmap(image_path)
         else:
-            self.pixmap = None # Should draw a placeholder
-            
-        # Trigger Animation
-        self.anim = QPropertyAnimation(self, b"wipe_angle")
-        self.anim.setDuration(800)
-        self.anim.setStartValue(0)
-        self.anim.setEndValue(360)
-        self.anim.setEasingCurve(QEasingCurve.Type.OutExpo)
-        self.anim.start()
+            self.pixmap = None  # Draw placeholder silhouette
+
+        # Stop any in-progress animation BEFORE creating a new one.
+        # Failing to do this causes a Qt6 buffer-overrun crash inside
+        # QPropertyAnimation when the old C++ animation object is replaced
+        # while still running (especially in PyInstaller EXE builds).
+        if self._anim is not None:
+            self._anim.stop()
+            self._anim = None
+
+        self._wipe_angle = 0   # reset so animation starts cleanly
+        anim = QPropertyAnimation(self, b"wipe_angle")
+        anim.setDuration(800)
+        anim.setStartValue(0)
+        anim.setEndValue(360)
+        anim.setEasingCurve(QEasingCurve.Type.OutExpo)
+        # Keep a stable Python-side reference so the C++ object isn't GC'd
+        self._anim = anim
+        anim.start()
         
     def paintEvent(self, event):
         painter = QPainter(self)
@@ -43,11 +55,26 @@ class AvatarWidget(QWidget):
         cx, cy = rect.width() / 2, rect.height() / 2
         radius = 35
         
-        # 1. Background Placeholder (Dark Circle)
-        painter.setBrush(QColor(10, 15, 25))
-        painter.setPen(QPen(QColor(COLOR_ACCENT_CYAN), 2))
+        # 1. Background Placeholder (Gradient Circle)
+        grad = QRadialGradient(cx, cy, radius)
+        grad.setColorAt(0, QColor(0, 242, 255, 30))
+        grad.setColorAt(1, QColor(5, 10, 15, 220))
+        painter.setBrush(QBrush(grad))
+        painter.setPen(Qt.PenStyle.NoPen)
         painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
         
+        if not self.pixmap:
+            # Clean User Silhouette
+            painter.setPen(QPen(QColor(0, 242, 255, 120), 2))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            # Head
+            painter.drawEllipse(int(cx - 10), int(cy - 12), 20, 20)
+            # Shoulders
+            path = QPainterPath()
+            path.moveTo(cx - 18, cy + 20)
+            path.quadTo(cx, cy + 5, cx + 18, cy + 20)
+            painter.drawPath(path)
+
         if self.pixmap:
             # 2. Draw Image with Wipe Mask
             painter.save()
@@ -68,12 +95,17 @@ class AvatarWidget(QWidget):
             painter.drawPixmap(int(px), int(py), scaled)
             painter.restore()
             
-        # 3. Glowing Ring Overlay
+        # 3. Glowing Ring Overlay & Inner Border
         painter.setBrush(Qt.BrushStyle.NoBrush)
         pen = QPen(QColor(COLOR_ACCENT_CYAN))
-        pen.setWidth(3)
+        pen.setWidth(2)
         painter.setPen(pen)
         painter.drawEllipse(int(cx - radius), int(cy - radius), int(radius * 2), int(radius * 2))
+        
+        inner_pen = QPen(QColor(255, 255, 255, 60))
+        inner_pen.setWidth(1)
+        painter.setPen(inner_pen)
+        painter.drawEllipse(int(cx - radius + 1), int(cy - radius + 1), int(radius * 2 - 2), int(radius * 2 - 2))
 
 class LoginWindow(QDialog):
     login_success = pyqtSignal(str, str) # role, username 
@@ -102,28 +134,30 @@ class LoginWindow(QDialog):
         
         # Central Card
         card = QFrame()
-        card.setFixedSize(380, 420)
-        # Clean Border
+        card.setFixedSize(400, 460)
+        # Premium Border
         card.setStyleSheet(f"""
             QFrame {{
-                background-color: #080810; 
-                border: 2px solid {COLOR_ACCENT_CYAN}; 
-                border-radius: 15px;
+                background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1, 
+                                                  stop:0 #0a0e17, stop:1 #04060a);
+                border: 1px solid rgba(0, 242, 255, 0.4); 
+                border-radius: 12px;
             }}
         """)
         
         # Glow Effect
         shadow = QGraphicsDropShadowEffect()
-        shadow.setBlurRadius(40)
+        shadow.setBlurRadius(45)
         shadow.setColor(QColor(COLOR_ACCENT_CYAN))
         shadow.setOffset(0, 0)
         card.setGraphicsEffect(shadow)
         
         # Inner Layout
         card_layout = QVBoxLayout(card)
-        card_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        card_layout.setSpacing(10) 
-        card_layout.setContentsMargins(30, 20, 30, 25)
+        card_layout.setSpacing(12) 
+        card_layout.setContentsMargins(35, 35, 35, 25)
+        
+        card_layout.addStretch() # Balances top spacing
         
         # Avatar Widget (Pro Visual)
         self.avatar = AvatarWidget()
@@ -141,38 +175,68 @@ class LoginWindow(QDialog):
         card_layout.addWidget(sub_title)
         
         # Inputs
+        premium_input_style = f"""
+            QLineEdit {{
+                background-color: rgba(5, 10, 16, 0.9);
+                color: {COLOR_ACCENT_CYAN};
+                border: 1px solid rgba(0, 242, 255, 0.3);
+                border-radius: 4px;
+                padding: 0px 15px; 
+                font-family: 'Consolas', monospace;
+                font-size: 15px;
+                font-weight: bold;
+                letter-spacing: 2px;
+            }}
+            QLineEdit:hover {{
+                border: 1px solid rgba(0, 242, 255, 0.6);
+                background-color: rgba(0, 242, 255, 0.05);
+            }}
+            QLineEdit:focus {{
+                border: 2px solid {COLOR_ACCENT_CYAN};
+                background-color: #03060c;
+                color: #ffffff;
+            }}
+        """
+
         self.user_in = QLineEdit()
         self.user_in.setPlaceholderText("USERNAME ID")
-        self.user_in.setStyleSheet(STYLE_INPUT_CYBER)
-        self.user_in.setFixedHeight(36)
+        self.user_in.setStyleSheet(premium_input_style)
+        self.user_in.setFixedHeight(45)
         self.user_in.returnPressed.connect(lambda: self.pass_in.setFocus()) 
         card_layout.addWidget(self.user_in)
         
         self.pass_in = QLineEdit()
         self.pass_in.setPlaceholderText("PASSWORD")
         self.pass_in.setEchoMode(QLineEdit.EchoMode.Password)
-        self.pass_in.setStyleSheet(STYLE_INPUT_CYBER)
-        self.pass_in.setFixedHeight(36)
+        self.pass_in.setStyleSheet(premium_input_style)
+        self.pass_in.setFixedHeight(45)
         self.pass_in.returnPressed.connect(self.handle_login) 
         card_layout.addWidget(self.pass_in)
         
         # Login Button
         self.btn_login = QPushButton("AUTHENTICATE")
-        self.btn_login.setFixedHeight(40)
+        self.btn_login.setFixedHeight(45)
         self.btn_login.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_login.setStyleSheet(f"""
             QPushButton {{
-                background-color: rgba(0, 229, 255, 0.1); 
-                color: {COLOR_ACCENT_CYAN}; 
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                                  stop:0 rgba(0, 229, 255, 0.2), stop:1 rgba(0, 229, 255, 0.4)); 
+                color: #ffffff; 
                 border: 1px solid {COLOR_ACCENT_CYAN}; 
                 border-radius: 6px; 
-                font-size: 13px; 
+                font-size: 14px; 
                 font-weight: bold;
+                letter-spacing: 2px;
             }}
             QPushButton:hover {{
+                background-color: qlineargradient(x1:0, y1:0, x2:1, y2:0, 
+                                                  stop:0 rgba(0, 229, 255, 0.4), stop:1 rgba(0, 229, 255, 0.8));
+                border: 1px solid #ffffff;
+                color: #ffffff;
+            }}
+            QPushButton:pressed {{
                 background-color: {COLOR_ACCENT_CYAN};
-                border: 1px solid {COLOR_ACCENT_CYAN};
-                color: #000;
+                color: #000000;
             }}
         """)
         self.btn_login.clicked.connect(self.handle_login)
@@ -181,13 +245,30 @@ class LoginWindow(QDialog):
         # Status Label
         self.status = QLabel("")
         self.status.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.status.setStyleSheet("color: #ff4444; font-size: 12px; font-weight: bold; border: none;")
+        self.status.setStyleSheet("color: #ff4444; font-size: 12px; font-weight: bold; border: none; background: transparent;")
         card_layout.addWidget(self.status)
         
+        card_layout.addStretch() # Pushes utility buttons to bottom
+        
         # Close Button
-        btn_close = QPushButton("SHUTDOWN")
+        btn_close = QPushButton("SYSTEM SHUTDOWN")
         btn_close.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_close.setStyleSheet("color: #555; border: none; font-weight: bold;")
+        btn_close.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                color: rgba(255, 68, 68, 0.7); 
+                border: none;
+                font-size: 11px;
+                font-weight: bold;
+                letter-spacing: 2px;
+                padding: 6px;
+            }
+            QPushButton:hover {
+                background-color: rgba(255, 68, 68, 0.1);
+                color: #ff3366;
+                border-radius: 4px;
+            }
+        """)
         btn_close.clicked.connect(self.reject)
         card_layout.addWidget(btn_close)
         
@@ -195,7 +276,20 @@ class LoginWindow(QDialog):
         self.lbl_recovery = QLabel("ADMIN RECOVERY PROTOCOL")
         self.lbl_recovery.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.lbl_recovery.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.lbl_recovery.setStyleSheet(f"color: #555; font-size: 10px; letter-spacing: 1px; margin-top: 5px;")
+        self.lbl_recovery.setStyleSheet(f"""
+            QLabel {{
+                color: rgba(0, 242, 255, 0.4); 
+                font-size: 10px; 
+                letter-spacing: 2px; 
+                font-weight: bold;
+                font-family: 'Segoe UI', sans-serif;
+                background: transparent;
+                padding: 4px;
+            }}
+            QLabel:hover {{
+                color: {COLOR_ACCENT_CYAN};
+            }}
+        """)
         self.lbl_recovery.mousePressEvent = self.initiate_recovery
         card_layout.addWidget(self.lbl_recovery)
         
@@ -212,22 +306,8 @@ class LoginWindow(QDialog):
              
         profile = self.db_manager.get_user_profile(username)
         if profile and profile.get("profile_pic"):
-             # Construct path
-             # Need to find absolute path to data/avatars
-             import sys
-             if getattr(sys, 'frozen', False):
-                 base = os.path.dirname(sys.executable)
-             else:
-                 base = os.path.dirname(os.path.abspath(__file__))
-             
-             # Check multiple possible locations for dev vs build
-             pic_path = os.path.join(base, "data", "avatars", profile["profile_pic"])
-             if not os.path.exists(pic_path):
-                 # Try AppData
-                 app_data = os.path.join(os.environ.get("APPDATA", ""), "SparePartsPro_v1.5", "data", "avatars", profile["profile_pic"])
-                 if os.path.exists(app_data):
-                     pic_path = app_data
-             
+             # Use centralised path helper — resolves to %APPDATA% when frozen
+             pic_path = get_app_data_path(os.path.join("data", "avatars", profile["profile_pic"]))
              self.avatar.set_image(pic_path)
         else:
              self.avatar.set_image(None)

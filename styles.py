@@ -1,13 +1,20 @@
+import os
+
+# Asset paths for SVG checkmarks
+from path_utils import get_resource_path
+_DIR       = get_resource_path("")
+_CHECK_SVG = os.path.join(_DIR, "assets", "check.svg").replace("\\", "/")
+
 # Colors
 # Colors - Anti-Gravity Cyberpunk Spec
-COLOR_BACKGROUND = "#010206" # Deepest Cosmic Void
-COLOR_SURFACE = "#03060c"    # Nebulous Surface
-COLOR_ACCENT_CYAN = "#00f2ff" # Plasma Cyan
-COLOR_ACCENT_RED = "#ff0044"  # Alert Crimson
+COLOR_BACKGROUND  = "#010206"  # Deepest Cosmic Void
+COLOR_SURFACE     = "#03060c"  # Nebulous Surface
+COLOR_ACCENT_CYAN  = "#00f2ff" # Plasma Cyan
+COLOR_ACCENT_RED   = "#ff0044" # Alert Crimson
 COLOR_ACCENT_GREEN = "#00ff88" # Energy Green
 COLOR_ACCENT_YELLOW = "#ffe600" # Cyber Yellow (Warning)
-COLOR_ACCENT_AMBER = "#ffaa00" # Plasma Amber
-COLOR_TEXT_PRIMARY = "#e2e8f0" # Astral White
+COLOR_ACCENT_AMBER  = "#ffaa00" # Plasma Amber
+COLOR_TEXT_PRIMARY  = "#e2e8f0" # Astral White
 # Professional Brand Color
 COLOR_NAVY_BLUE = "#040c1a"
 
@@ -296,85 +303,72 @@ STYLE_DIGITAL_LABEL = f"""
 STYLE_TABLE_CYBER = f"""
     QTableWidget {{
         background-color: {COLOR_BACKGROUND};
-        gridline-color: #0f1520; /* Very subtle grid */
+        gridline-color: #0a1020;
         color: {COLOR_TEXT_PRIMARY};
         border: none;
         font-family: 'Segoe UI', sans-serif;
         font-size: 13px;
-        selection-background-color: rgba(0, 242, 255, 0.1);
+        selection-background-color: rgba(0,242,255,0.12);
         outline: 0;
     }}
-    QTableWidget::viewport {{
-        background-color: {COLOR_BACKGROUND};
-    }}
+    QTableWidget::viewport {{ background-color: {COLOR_BACKGROUND}; }}
     QHeaderView::section {{
-        background-color: #080b10;
-        color: {COLOR_ACCENT_CYAN}; 
-        padding: 5px 10px;
+        background-color: #060a12;
+        color: {COLOR_ACCENT_CYAN};
+        padding: 6px 10px;
         border: none;
-        border-bottom: 2px solid rgba(0, 242, 255, 0.3);
+        border-bottom: 2px solid rgba(0,242,255,0.25);
         font-family: 'Segoe UI', sans-serif;
         font-weight: 700;
         text-transform: uppercase;
         font-size: 11px;
         letter-spacing: 1px;
     }}
-    QTableCornerButton::section {{
-        background-color: #080b10;
-        border: none;
-    }}
+    QTableCornerButton::section {{ background-color: #060a12; border: none; }}
     QTableWidget::item {{
-        padding: 2px 5px; /* Tighter padding for cells */
-        border-bottom: 1px solid #0f1520;
+        padding: 2px 6px;
+        border-bottom: 1px solid #0a1020;
     }}
     QTableWidget::item:hover {{
-        background-color: rgba(0, 242, 255, 0.1); 
-        border: 1px solid {COLOR_ACCENT_CYAN};
+        background-color: rgba(0,242,255,0.08);
     }}
     QTableWidget::item:selected {{
-        background-color: rgba(0, 242, 255, 0.3); /* Brighter selection */
+        background-color: rgba(0,242,255,0.18);
         color: white;
-        border: 1px solid {COLOR_ACCENT_CYAN}; /* Highlight border */
+        border-left: 2px solid {COLOR_ACCENT_CYAN};
     }}
-    QTableWidget::item:focus {{
-        outline: none;
-        border: none;
+    QTableWidget::item:focus {{ outline: none; border: none; }}
+    /* Cell checkboxes — fixed: proper checkmark tick */
+    QTableWidget QCheckBox::indicator {{
+        width: 15px; height: 15px;
+        border-radius: 3px;
+        border: 1.5px solid #3a5070;
+        background: #0d1a2a;
     }}
-    
+    QTableWidget QCheckBox::indicator:hover {{
+        border: 1.5px solid {COLOR_ACCENT_CYAN};
+    }}
+    QTableWidget QCheckBox::indicator:checked {{
+        background: {COLOR_ACCENT_CYAN};
+        border: 1.5px solid {COLOR_ACCENT_CYAN};
+        image: url({_CHECK_SVG});
+    }}
     QScrollBar:vertical {{
-        border: none;
-        background: #050b14;
-        width: 6px;
-        margin: 0px;
+        border: none; background: #050a14; width: 7px; margin: 0;
     }}
     QScrollBar::handle:vertical {{
-        background: #1a2a3a;
-        min-height: 20px;
-        border-radius: 3px;
+        background: #2a3a50; min-height: 24px; border-radius: 3px;
     }}
-    QScrollBar::handle:vertical:hover {{
-        background: {COLOR_ACCENT_CYAN};
-    }}
-    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-        height: 0px;
-    }}
-    QScrollBar::horizontal {{
-        border: none;
-        background: #050b14;
-        height: 6px;
-        margin: 0px;
+    QScrollBar::handle:vertical:hover {{ background: {COLOR_ACCENT_CYAN}; }}
+    QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+    QScrollBar:horizontal {{
+        border: none; background: #050a14; height: 7px; margin: 0;
     }}
     QScrollBar::handle:horizontal {{
-        background: #1a2a3a;
-        min-width: 20px;
-        border-radius: 3px;
+        background: #2a3a50; min-width: 24px; border-radius: 3px;
     }}
-    QScrollBar::handle:horizontal:hover {{
-        background: {COLOR_ACCENT_CYAN};
-    }}
-    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
-        width: 0px;
-    }}
+    QScrollBar::handle:horizontal:hover {{ background: {COLOR_ACCENT_CYAN}; }}
+    QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
 """
 
 def get_stylesheet():
@@ -382,80 +376,232 @@ def get_stylesheet():
         {STYLE_MAIN_WINDOW}
         {STYLE_SIDEBAR_BTN}
         {STYLE_GLASS_PANEL}
-        /* Global Scrollbar */
+
+        /* ═══ GLOBAL SCROLLBARS ═══ */
         QScrollBar:vertical {{
-            border: none;
-            background: #222;
-            width: 8px;
-            margin: 0px 0px 0px 0px;
+            border: none; background: #060a12; width: 7px; margin: 0;
         }}
         QScrollBar::handle:vertical {{
-            background: #444;
-            min-height: 20px;
-            border-radius: 4px;
+            background: #2a3a50; min-height: 20px; border-radius: 3px;
         }}
-        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
-            height: 0px;
+        QScrollBar::handle:vertical:hover {{ background: {COLOR_ACCENT_CYAN}; }}
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
+        QScrollBar:horizontal {{
+            border: none; background: #060a12; height: 7px; margin: 0;
         }}
-        
-        /* Calendar Widget Styling */
+        QScrollBar::handle:horizontal {{
+            background: #2a3a50; min-width: 20px; border-radius: 3px;
+        }}
+        QScrollBar::handle:horizontal:hover {{ background: {COLOR_ACCENT_CYAN}; }}
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{ width: 0; }}
+
+        /* ═══ CALENDAR ═══ */
         QCalendarWidget QWidget {{
-            background-color: #0b0b14;
-            color: white;
+            background-color: #0b0b14; color: white;
             selection-background-color: {COLOR_ACCENT_CYAN};
             selection-color: black;
             font-family: 'Segoe UI', sans-serif;
         }}
         QCalendarWidget QToolButton {{
-            color: {COLOR_ACCENT_CYAN};
-            icon-size: 24px;
-            background-color: transparent;
-            font-weight: bold;
+            color: {COLOR_ACCENT_CYAN}; icon-size: 24px;
+            background-color: transparent; font-weight: bold;
         }}
-        QCalendarWidget QMenu {{
-            background-color: #111;
-            color: white;
-        }}
+        QCalendarWidget QMenu {{ background-color: #111; color: white; }}
         QCalendarWidget QSpinBox {{
-            background-color: #111;
-            color: white;
+            background-color: #111; color: white;
             selection-background-color: {COLOR_ACCENT_CYAN};
         }}
-        QCalendarWidget QAbstractItemView:enabled {{   
-            background-color: #0b0b14;  
-            color: white;  
+        QCalendarWidget QAbstractItemView:enabled {{
+            background-color: #0b0b14; color: white;
             selection-background-color: {COLOR_ACCENT_CYAN};
             selection-color: black;
         }}
-        QCalendarWidget QAbstractItemView:disabled {{ 
-            color: #444; 
-        }}
-        
-        /* Dropdown Popup Styling */
+        QCalendarWidget QAbstractItemView:disabled {{ color: #444; }}
+
+        /* ═══ COMBOBOX POPUP ═══ */
         QComboBox QAbstractItemView {{
-            background-color: #0b0b14;
-            color: white;
-            selection-background-color: {COLOR_ACCENT_CYAN};
-            selection-color: black;
-            border: 1px solid {COLOR_ACCENT_CYAN};
+            background-color: #0b0b14; color: #e2e8f0;
+            selection-background-color: rgba(0,242,255,0.2);
+            selection-color: {COLOR_ACCENT_CYAN};
+            border: 1px solid #1a2236;
             outline: 0;
+            padding: 2px;
         }}
         QComboBox {{
-            background-color: rgba(0, 0, 0, 0.6);
-            color: {COLOR_ACCENT_CYAN};
-            border: 1px solid #333;
-            border-radius: 4px;
-            padding: 5px;
+            background-color: #010206; color: #e2e8f0;
+            border: 1px solid #1a2236; border-radius: 6px; padding: 6px 10px;
         }}
+        QComboBox:hover {{ border: 1px solid #2a3a56; }}
+        QComboBox:focus {{ border: 1px solid rgba(0,242,255,0.6); }}
         QComboBox::drop-down {{
-            subcontrol-origin: padding;
-            subcontrol-position: top right;
-            width: 25px;
-            border-left-width: 1px;
-            border-left-color: #333;
-            border-left-style: solid;
+            subcontrol-origin: padding; subcontrol-position: top right;
+            width: 24px; border-left: none;
+        }}
+
+        /* ═══ DIALOGS ═══ */
+        QDialog {{
+            background-color: #010206; color: #e2e8f0;
+        }}
+        QMessageBox {{
+            background-color: #010206; color: #e2e8f0;
+        }}
+        QMessageBox QLabel {{
+            color: #e2e8f0; font-family: 'Segoe UI', sans-serif; font-size: 13px;
+        }}
+        QMessageBox QPushButton {{
+            background: rgba(0,242,255,0.10); color: #00f2ff;
+            border: 1px solid #00f2ff; border-radius: 6px;
+            padding: 6px 20px; font-weight: bold; min-width: 80px;
+        }}
+        QMessageBox QPushButton:hover {{
+            background: #00f2ff; color: #000;
+        }}
+
+        /* ═══ GLOBAL BUTTON DEFAULTS ═══ */
+        QPushButton {{
+            min-height: 34px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+            border-radius: 7px;
+            padding: 5px 14px;
+            font-weight: 600;
+        }}
+
+        /* ═══ GLOBAL LABELS ═══ */
+        QLabel {{
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 13px;
+        }}
+
+        /* ═══ SPINBOXES ═══ */
+        QSpinBox, QDoubleSpinBox {{
+            background-color: #010206; color: #e2e8f0;
+            border: 1px solid #1a2236; border-radius: 6px;
+            padding: 6px 8px; font-family: 'Segoe UI', sans-serif;
+            font-size: 13px; min-height: 32px;
+        }}
+        QSpinBox:focus, QDoubleSpinBox:focus {{
+            border: 1px solid rgba(0,242,255,0.65);
+        }}
+        QSpinBox::up-button, QDoubleSpinBox::up-button,
+        QSpinBox::down-button, QDoubleSpinBox::down-button {{
+            background-color: #1a2236; border: none; width: 18px; border-radius: 3px;
+        }}
+        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+        QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {{
+            background-color: #2a3550;
+        }}
+
+        /* ═══ GROUPBOX ═══ */
+        QGroupBox {{
+            background-color: #03060c;
+            border: 1px solid rgba(0,242,255,0.15);
+            border-radius: 8px; margin-top: 16px;
+            padding: 12px 10px 10px 10px;
+            font-family: 'Segoe UI', sans-serif;
+            font-size: 12px; font-weight: bold; color: #00f2ff;
+        }}
+        QGroupBox::title {{
+            subcontrol-origin: margin; subcontrol-position: top left;
+            padding: 2px 10px; color: #00f2ff;
+            background: #03060c; border-radius: 4px;
+        }}
+
+        /* ═══ SPLITTER ═══ */
+        QSplitter::handle {{ background: rgba(0,242,255,0.07); }}
+        QSplitter::handle:hover {{ background: rgba(0,242,255,0.18); }}
+
+        /* ═══ STATUS BAR ═══ */
+        QStatusBar {{
+            background: #060a12; color: #64748b;
+            border-top: 1px solid rgba(0,242,255,0.08);
+            font-size: 11px; font-family: 'Segoe UI', sans-serif; padding: 2px 8px;
+        }}
+        QStatusBar::item {{ border: none; }}
+
+        /* ═══ TAB WIDGET ═══ */
+        QTabWidget::pane {{
+            border: 1px solid #1a2236; background: #010206; border-radius: 4px;
+        }}
+        QTabBar::tab {{
+            background: #0b0e14; color: #64748b;
+            padding: 8px 20px; margin-right: 2px;
+            border-top-left-radius: 4px; border-top-right-radius: 4px;
+            font-family: 'Segoe UI', sans-serif; font-weight: 600;
+            min-height: 30px;
+        }}
+        QTabBar::tab:selected {{
+            background: rgba(0,242,255,0.10); color: #00f2ff;
+            border-bottom: 2px solid #00f2ff; font-weight: bold;
+        }}
+        QTabBar::tab:hover {{ background: #151a25; color: #e2e8f0; }}
+
+        /* ═══ HEADERS ═══ */
+        QHeaderView::section {{
+            background-color: #060a12; color: #00f2ff;
+            padding: 6px 10px; border: none;
+            border-bottom: 2px solid rgba(0,242,255,0.25);
+            font-family: 'Segoe UI', sans-serif;
+            font-weight: 700; font-size: 11px; letter-spacing: 1px;
+        }}
+
+        /* ═══ INPUT FIELDS ═══ */
+        QLineEdit, QTextEdit {{
+            min-height: 32px;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #010206;
+            color: #e2e8f0;
+            border: 1px solid #1a2236;
+            border-radius: 6px;
+            padding: 6px 10px;
+        }}
+        QLineEdit:focus, QTextEdit:focus {{
+            border: 1px solid rgba(0,242,255,0.65);
+            background-color: rgba(0,242,255,0.02);
+        }}
+        QLineEdit:hover {{ border: 1px solid #2a3a56; }}
+
+        /* ═══ TOOLTIP ═══ */
+        QToolTip {{
+            background-color: #0d1117; color: #e2e8f0;
+            border: 1px solid rgba(0,242,255,0.35);
+            border-radius: 6px; padding: 6px 10px;
+            font-family: 'Segoe UI', sans-serif; font-size: 13px;
+        }}
+
+        /* ═══ TABLE ALTERNATING ROWS ═══ */
+        QTableWidget {{ alternate-background-color: #060c18; }}
+
+        /* ═══ GLOBAL CHECKBOX — fixed tick mark ═══ */
+        QCheckBox {{
+            color: #e2e8f0; font-family: 'Segoe UI', sans-serif;
+            font-size: 13px; spacing: 8px;
+        }}
+        QCheckBox::indicator {{
+            width: 17px; height: 17px;
+            border-radius: 4px;
+            border: 2px solid #3a5070;
+            background: #0f1e30;
+        }}
+        QCheckBox::indicator:hover {{
+            border: 2px solid {COLOR_ACCENT_CYAN};
+            background: rgba(0,242,255,0.08);
+        }}
+        QCheckBox::indicator:checked {{
+            background: {COLOR_ACCENT_CYAN};
+            border: 2px solid {COLOR_ACCENT_CYAN};
+            image: url({_CHECK_SVG});
+        }}
+        QCheckBox::indicator:checked:hover {{
+            background: #33f5ff; border: 2px solid #33f5ff;
+        }}
+        QCheckBox:disabled {{ color: #64748b; }}
+        QCheckBox::indicator:disabled {{
+            border: 2px solid #1e2e42; background: #080c14;
         }}
     """
+
+
 
 STYLE_DANGER_BUTTON = f"""
     QPushButton {{

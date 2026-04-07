@@ -1,8 +1,9 @@
+import ui_theme
 from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
                              QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, 
-                             QSpinBox, QFrame, QAbstractItemView)
+                             QSpinBox, QDoubleSpinBox, QFrame, QAbstractItemView, QWidget)
 from PyQt6.QtCore import Qt
-from styles import COLOR_ACCENT_CYAN, STYLE_NEON_BUTTON, STYLE_TABLE_CYBER, COLOR_BACKGROUND
+from styles import COLOR_ACCENT_CYAN, STYLE_TABLE_CYBER, COLOR_BACKGROUND
 from custom_components import ProMessageBox
 
 class ReturnDialog(QDialog):
@@ -62,7 +63,9 @@ class ReturnDialog(QDialog):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         self.table.setColumnWidth(4, 120)
-        self.table.setStyleSheet(STYLE_TABLE_CYBER)
+        self.table.verticalHeader().setDefaultSectionSize(45)
+        self.table.verticalHeader().setVisible(False)
+        self.table.setStyleSheet(ui_theme.get_table_style())
         self.table.setSelectionMode(QAbstractItemView.SelectionMode.NoSelection)
         self.table.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.table)
@@ -110,7 +113,7 @@ class ReturnDialog(QDialog):
         btn_confirm = QPushButton("CONFIRM RETURN")
         btn_confirm.setFixedHeight(45)
         btn_confirm.setCursor(Qt.CursorShape.PointingHandCursor)
-        btn_confirm.setStyleSheet(STYLE_NEON_BUTTON)
+        btn_confirm.setStyleSheet(ui_theme.get_primary_button_style())
         btn_confirm.clicked.connect(self.process_returns)
         
         btn_layout.addStretch()
@@ -119,50 +122,96 @@ class ReturnDialog(QDialog):
         layout.addLayout(btn_layout)
         
     def load_invoice_items(self):
-        # Fetch items from DB
-        items = self.db_manager.get_invoice_items(self.invoice_id)
-        
+        # Fetch full invoice details to get both cart items AND tax_details
+        inv_details = self.db_manager.get_invoice_details(self.invoice_id)
+        items = inv_details.get('items', []) if inv_details else []
+
+        # Build a lookup: part_id → final unit price (post-ALL-discounts, including bill-wide discount)
+        # tax_details stores '_final_total' which is the exact amount charged for that item
+        self._final_unit_price = {}
+        for t in (inv_details.get('tax_details', []) if inv_details else []):
+            pid = t.get('id', '')
+            final_total = t.get('_final_total', 0.0)
+            qty_in_cart = 0
+            for i in items:
+                if i.get('sys_id', i.get('id', '')) == pid:
+                    qty_in_cart = float(i.get('qty', 1.0))
+                    break
+            if pid and qty_in_cart > 0:
+                self._final_unit_price[pid] = final_total / qty_in_cart
+
+        # Build prior-returns map: part_id → total qty already returned for this invoice (B7 fix)
+        prior_returns = {}
+        try:
+            conn = self.db_manager.get_connection()
+            cursor = conn.execute(
+                "SELECT part_id, SUM(quantity) FROM returns WHERE invoice_id = ? GROUP BY part_id",
+                (self.invoice_id,)
+            )
+            for row in cursor.fetchall():
+                if row[0]:
+                    prior_returns[str(row[0]).strip()] = float(row[1] or 0)
+            conn.close()
+        except Exception:
+            pass  # Non-critical; fall back to allowing full qty
+
         self.table.setRowCount(0)
         self.spinboxes = {} # Map row -> spinbox
         self.item_data = {} # Map row -> item dict
-        
+
         for i, item in enumerate(items):
             # item dict: {'id':..., 'name':..., 'qty':..., 'price':..., 'total':...}
             self.table.insertRow(i)
-            
+
             # 0: ID
             # Safe get for sys_id or id
             pid = item.get('sys_id', item.get('id', 'Unknown'))
-            
+
             self.table.setItem(i, 0, QTableWidgetItem(str(pid)))
             self.table.setItem(i, 1, QTableWidgetItem(str(item.get('name', 'Unknown'))))
-            
-            sold_qty = int(item.get('qty', 0))
-            # Center align numbers
-            t_qty = QTableWidgetItem(str(sold_qty))
+
+            sold_qty = float(item.get('qty', 0.0))
+            already_returned = prior_returns.get(str(pid).strip(), 0.0)
+            remaining_returnable = max(0.0, sold_qty - already_returned)
+
+            t_qty = QTableWidgetItem(f"{float(sold_qty):g}")
             t_qty.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.table.setItem(i, 2, t_qty)
-            
-            price = float(item.get('price', 0.0))
+
+            # Use final unit price (post all discounts) from tax_details.
+            # Fall back to item['price'] for legacy invoices without tax_details.
+            price = self._final_unit_price.get(pid, float(item.get('price', 0.0)))
             t_price = QTableWidgetItem(f"{price:,.2f}")
             t_price.setTextAlignment(Qt.AlignmentFlag.AlignRight)
             self.table.setItem(i, 3, t_price)
-            
-            # SpinBox
-            spin = QSpinBox()
-            spin.setRange(0, sold_qty)
+
+            spin = QDoubleSpinBox()
+            spin.setDecimals(2)
+            spin.setSingleStep(1.0)
+            spin.setRange(0.0, remaining_returnable)  # capped at remaining, not original sold qty
             spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            spin.setStyleSheet("background: #0b0b14; color: white; border: 1px solid #444; border-radius: 4px; padding: 4px;")
+            spin.setStyleSheet("""
+                QDoubleSpinBox { background: #0b0e18; color: #00f2ff; border: 1px solid #1a3040; border-radius: 3px; padding: 2px 4px; font-weight: bold; font-size: 13px; }
+                QDoubleSpinBox::up-button, QDoubleSpinBox::down-button { width: 16px; }
+            """)
+            spin.setFixedWidth(80)
+            spin.setFixedHeight(30)
+            if remaining_returnable <= 0:
+                spin.setEnabled(False)
+                spin.setToolTip("All units already returned")
             spin.valueChanged.connect(self.calculate_refund)
-            
-            container = QFrame()
-            clayout = QVBoxLayout(container)
-            clayout.setContentsMargins(10, 2, 10, 2) # Padding for nicer look
+
+            container = QWidget()
+            clayout = QHBoxLayout(container)
+            clayout.setContentsMargins(0, 0, 0, 0)
             clayout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             clayout.addWidget(spin)
             self.table.setCellWidget(i, 4, container)
-            
+
             self.spinboxes[i] = spin
+            # Store pid and resolved price in item_data for refund calculation
+            item['_pid'] = pid
+            item['_unit_price'] = price
             self.item_data[i] = item
             
     def calculate_refund(self):
@@ -170,7 +219,7 @@ class ReturnDialog(QDialog):
         for i, spin in self.spinboxes.items():
             qty = spin.value()
             if qty > 0:
-                price = float(self.item_data[i].get('price', 0.0))
+                price = float(self.item_data[i].get('_unit_price', 0.0))
                 total_refund += (qty * price)
         
         self.lbl_refund.setText(f"₹ {total_refund:,.2f}")
@@ -183,10 +232,10 @@ class ReturnDialog(QDialog):
             qty = spin.value()
             if qty > 0:
                 item = self.item_data[i]
-                price = float(item.get('price', 0.0))
+                price = float(item.get('_unit_price', 0.0))
                 refund = qty * price
                 # Get Correct ID (Check sys_id or id)
-                pid = item.get('sys_id', item.get('id', 'Unknown'))
+                pid = item.get('_pid', item.get('sys_id', item.get('id', 'Unknown')))
                 
                 return_items.append({
                     'part_id': pid,

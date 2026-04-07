@@ -1,10 +1,55 @@
-import sys
+import sys, os, traceback
+from PyQt6.QtWidgets import QMessageBox
+import PyQt6.QtSvg
+
+# ── Resolve crash log path (EXE-safe) ────────────────────────────────────────
+def _get_crash_log_path():
+    """Return a writable crash_log.txt path inside AppData (frozen) or project root (dev)."""
+    try:
+        from path_utils import get_app_data_path
+        return get_app_data_path(os.path.join("logs", "crash_log.txt"))
+    except Exception:
+        return "crash_log.txt"  # fallback for very early failures
+
+_CRASH_LOG = _get_crash_log_path()
+
+class Logger(object):
+    def __init__(self, filename=None):
+        self.filename = filename or _CRASH_LOG
+    def write(self, message):
+        try:
+            with open(self.filename, 'a', encoding="utf-8") as f:
+                f.write(message)
+        except: pass
+    def flush(self): pass
+
+sys.stdout = Logger()
+sys.stderr = Logger()
+
+def excepthook(exc_type, exc_value, exc_tb):
+    try:
+        with open(_CRASH_LOG, 'a', encoding="utf-8") as f:
+            f.write("\n--- PYTHON EXCEPTION ---\n")
+            traceback.print_exception(exc_type, exc_value, exc_tb, file=f)
+    except: pass
+sys.excepthook = excepthook
+
+from PyQt6.QtCore import qInstallMessageHandler, QtMsgType
+def qt_message_handler(mode, context, message):
+    try:
+        with open(_CRASH_LOG, 'a', encoding="utf-8") as f:
+            f.write(f"\n[QT MSG] {mode} - {message} (line: {context.line}, func: {context.function}, file: {context.file})\n")
+    except: pass
+qInstallMessageHandler(qt_message_handler)
+
+from PyQt6.QtWidgets import QMessageBox
 import os
-from PyQt6.QtGui import QPixmap, QColor, QPalette, QIcon, QClipboard
-from PyQt6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QDialog, QLineEdit, QDialogButtonBox, QPushButton, QMessageBox
-from PyQt6.QtCore import Qt, QTimer, QEventLoop
-from logger import app_logger
-from license_manager import LicenseVerifier
+from PyQt6.QtGui import QPixmap, QColor, QPalette, QIcon, QClipboard  # type: ignore
+from PyQt6.QtWidgets import QApplication, QSplashScreen, QProgressBar, QLabel, QVBoxLayout, QHBoxLayout, QDialog, QLineEdit, QDialogButtonBox, QPushButton, QMessageBox  # type: ignore
+from PyQt6.QtCore import Qt, QTimer, QEventLoop  # type: ignore
+from logger import app_logger  # type: ignore
+from path_utils import get_resource_path, get_app_data_path  # type: ignore
+from license_manager import LicenseVerifier  # type: ignore
 
 # IMPORTS FOR PYINSTALLER DETECTION (Lazy loaded modules must be explicit here or in hidden-imports)
 if False:
@@ -31,47 +76,28 @@ if False:
     import whatsapp_helper
     import ai_manager
     import billing_animations
+    import catalog_page
+    import vehicle_compat_engine
+    import hsn_sync_engine
+    import hsn_reference_data
+    import tvs_catalog_client
+    import api_sync_engine
+    import db_engine
+    import data_importer
+    import report_generator
+    import auto_enrich_worker   
 
-# 1. Path Handling
-def get_resource_path(relative_path):
-    """ Get absolute path to resource, works for dev and for PyInstaller """
+# 1. Path Handling — delegated entirely to path_utils (see imports above)
+
+# Ensure all writable subdirectories exist on startup
+for d in ["logos", "invoices", "data"]:
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_path, relative_path)
-
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
-
-# Create folders if not exist (in user documents or local, since _MEIPASS is read-only)
-# We need a writable location for the DB and Invoices, not the temp execution dir
-if getattr(sys, 'frozen', False):
-    # Running as compiled app - Prefer APPDATA then Home
-    base = os.environ.get("APPDATA") or os.path.expanduser("~")
-    app_data_dir = os.path.join(base, "SparePartsPro_v1.5")
-else:
-    app_data_dir = current_dir
-
-if not os.path.exists(app_data_dir):
-    try:
-        os.makedirs(app_data_dir)
-        app_logger.info(f"Created app data directory: {app_data_dir}")
+        get_app_data_path(d)
     except OSError as e:
-        app_logger.critical(f"Failed to create app data directory: {e}")
-
-needed_dirs = ["logos", "invoices", "data"]
-for d in needed_dirs:
-    p = os.path.join(app_data_dir, d)
-    if not os.path.exists(p):
-        try:
-            os.makedirs(p)
-        except OSError as e:
-            app_logger.error(f"Failed to create directory {p}: {e}")
+        app_logger.error(f"Failed to create directory '{d}': {e}")
 
 # Thread for non-blocking imports
-from PyQt6.QtCore import QThread, pyqtSignal
+from PyQt6.QtCore import QThread, pyqtSignal  # type: ignore
 
 class StartupLoader(QThread):
     progress = pyqtSignal(int, str)
@@ -81,8 +107,8 @@ class StartupLoader(QThread):
         try:
             # 1. Database
             self.progress.emit(10, "INITIALIZING DATABASE CORE...")
-            from database_manager import DatabaseManager
-            import db_config
+            from database_manager import DatabaseManager  # type: ignore
+            import db_config  # type: ignore
             
             # Get DB path from network config (local or network)
             db_path = db_config.get_db_path()
@@ -91,7 +117,7 @@ class StartupLoader(QThread):
             db_dir = os.path.dirname(db_path)
             if db_dir and not os.path.exists(db_dir):
                 try:
-                    os.makedirs(db_dir, exist_ok=True)
+                    os.makedirs(str(db_dir), exist_ok=True)
                 except OSError as e:
                     app_logger.error(f"Failed to create DB directory {db_dir}: {e}")
             
@@ -100,7 +126,7 @@ class StartupLoader(QThread):
             
             # 2. Heavy Modules & Logic
             self.progress.emit(40, "LOADING SECURITY MODULE...")
-            from license_manager import LicenseVerifier
+            from license_manager import LicenseVerifier  # type: ignore
             verifier = LicenseVerifier(db_manager)
             
             # Check Status Early
@@ -111,17 +137,17 @@ class StartupLoader(QThread):
             # But QThread cannot show GUI. 
             # Strategy: Pass verifier to finished_loading and handle logic in App init.
             
-            from login_window import LoginWindow
+            from login_window import LoginWindow  # type: ignore
             
             self.progress.emit(60, "LOADING USER INTERFACE...")
             # Pre-import MainWindow dependencies (Pandas, Matplotlib)
             try:
-                import pandas 
-                import matplotlib.pyplot
+                import pandas  # type: ignore
+                import matplotlib.pyplot  # type: ignore
             except ImportError:
                 pass # Optional dependencies or let MainWindow handle it
             
-            from main_window import MainWindow
+            from main_window import MainWindow  # type: ignore
             
             self.progress.emit(90, "FINALIZING STARTUP...")
             
@@ -271,16 +297,16 @@ def main():
         app = QApplication(sys.argv)
         
         # Styles
-        from styles import get_stylesheet, COLOR_ACCENT_CYAN, COLOR_BACKGROUND
+        from styles import get_stylesheet, COLOR_ACCENT_CYAN, COLOR_BACKGROUND  # type: ignore
         app.setStyleSheet(get_stylesheet())
         
-        # Set App Icon (taskbar + window title)
+        # Set App Icon (taskbar + window title) — read-only bundled asset
         icon_path = get_resource_path("logo.ico")
         if os.path.exists(icon_path):
             app.setWindowIcon(QIcon(icon_path))
         
         # Palette fix for dark theme
-        from PyQt6.QtGui import QPalette
+        from PyQt6.QtGui import QPalette  # type: ignore
         palette = QPalette()
         palette.setColor(QPalette.ColorRole.Window, QColor(COLOR_BACKGROUND))
         palette.setColor(QPalette.ColorRole.WindowText, QColor(COLOR_ACCENT_CYAN))
@@ -298,7 +324,7 @@ def main():
         app.setPalette(palette)
 
         # Splash Screen
-        from custom_components import SciFiSplashScreen
+        from custom_components import SciFiSplashScreen  # type: ignore
         splash = SciFiSplashScreen()
         splash.show()
     
@@ -368,10 +394,10 @@ def main():
         splash.close()
         
         # --- NETWORK SETUP CHECK ---
-        import db_config
+        import db_config  # type: ignore
         if not db_config.config_exists():
             app_logger.info("No network config found. Showing Network Setup Dialog.")
-            from network_setup import NetworkSetupDialog
+            from network_setup import NetworkSetupDialog  # type: ignore
             net_dlg = NetworkSetupDialog()
             if not net_dlg.exec():
                 app_logger.info("Network setup cancelled. Exiting.")
@@ -380,18 +406,18 @@ def main():
             # Re-initialize DB with new config if changed to CLIENT mode
             config = db_config.load_config()
             if config and config.get('mode') == 'CLIENT':
-                from database_manager import DatabaseManager
+                from database_manager import DatabaseManager  # type: ignore
                 new_path = db_config.get_db_path()
                 app_logger.info(f"Client mode: reconnecting to {new_path}")
                 db_manager = DatabaseManager(new_path)
                 loader_data["db"] = db_manager
         
         # Generate Hardware ID
-        from hardware_id import get_hardware_id
+        from hardware_id import get_hardware_id  # type: ignore
         hwid = get_hardware_id()
         app_logger.info(f"Hardware ID: {hwid}")
         
-        status, _ = verifier.check_license()
+        status, _ = verifier.check_license()  # type: ignore
         
         if status != 'ACTIVE':
             dlg = HardwareIDDialog(hwid, verifier)
@@ -403,7 +429,7 @@ def main():
     
         login = loader_data.get("login_instance")
         if not login:
-             login = LoginWindow(db_manager, MainWindow) # Pass MainWindow class!
+             login = LoginWindow(db_manager, MainWindow) # type: ignore
     
         app_logger.info("Launching Login Window...")
     
@@ -418,7 +444,7 @@ def main():
         try:
              import ctypes
              DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-             set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+             set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute  # type: ignore
              hwnd = int(login.winId())
              set_window_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int))
         except:
@@ -438,17 +464,12 @@ def main():
              # We queue the close call. It will execute when login.exec() starts its event loop.
              QTimer.singleShot(100, splash.close)
          
-             # TEMPORARY LOGIN SKIP FOR TESTING
-             login_state["authenticated"] = True
-             login_state["role"] = "ADMIN"
-             login_state["username"] = "admin"
-             
-             if True: # login.exec():
+             if login.exec():
                  if login_state["authenticated"]:
                      app_logger.info(f"User authenticated as {login_state['role']}. Launching Main Window.")
                      login.deleteLater() # Cleanup login window
                      # Show Main Window only if authenticated
-                     window = MainWindow(db_manager, login_state["role"], login_state["username"])
+                     window = MainWindow(db_manager, login_state["role"], login_state["username"])  # type: ignore
                 
                      # Fade In Logic or Delayed Show
                      # window.setWindowOpacity(0) # Removed as per user request
@@ -456,7 +477,7 @@ def main():
                      try:
                          import ctypes
                          DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-                         set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
+                         set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute  # type: ignore
                          hwnd = int(window.winId())
                          set_window_attribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ctypes.byref(ctypes.c_int(1)), ctypes.sizeof(ctypes.c_int))
                      except Exception as e:
@@ -481,7 +502,7 @@ def main():
         msg = f"Unhandled exception in main loop: {e}"
         app_logger.critical(msg, exc_info=True)
         try:
-            from PyQt6.QtWidgets import QMessageBox
+            from PyQt6.QtWidgets import QMessageBox  # type: ignore
             QMessageBox.critical(None, "Application Error", f"A critical error occurred:\n\n{e}\n\nCheck logs for details.")
         except:
             pass

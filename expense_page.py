@@ -11,7 +11,7 @@ from styles import (COLOR_BACKGROUND, COLOR_SURFACE, COLOR_ACCENT_CYAN, COLOR_AC
 from datetime import datetime
 import math
 
-DAILY_BUDGET = 5000.0
+# Phase 6: Removed hardcoded DAILY_BUDGET. Now dynamically fetching from db settings.
 
 class BudgetReactor(QWidget):
     """
@@ -21,7 +21,7 @@ class BudgetReactor(QWidget):
         super().__init__(parent)
         self.setFixedHeight(250)
         self.spent = 0.0
-        self.budget = DAILY_BUDGET
+        self.budget = 5000.0 # Default fallback
         self.percentage = 0.0
         self.angle_offset = 0
         
@@ -231,20 +231,7 @@ class ExpenseBlock(QFrame):
         
         # EDIT BUTTON
         btn_edit = QPushButton("✏️")
-        btn_edit.setFixedSize(32, 32)
-        btn_edit.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(0, 229, 255, 0.15);
-                border: 1px solid #00e5ff;
-                border-radius: 5px;
-                font-size: 13px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: rgba(0, 229, 255, 0.3);
-                border: 2px solid #00e5ff;
-            }
-        """)
+        btn_edit.setStyleSheet(ui_theme.get_icon_btn_cyan())
         btn_edit.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_edit.setToolTip("Edit this expense")
         btn_edit.clicked.connect(lambda checked=False: self.edit_expense())
@@ -252,20 +239,7 @@ class ExpenseBlock(QFrame):
         
         # DELETE BUTTON
         btn_delete = QPushButton("🗑️")
-        btn_delete.setFixedSize(32, 32)
-        btn_delete.setStyleSheet("""
-            QPushButton {
-                background-color: rgba(255, 68, 68, 0.15);
-                border: 1px solid #ff4444;
-                border-radius: 5px;
-                font-size: 13px;
-                padding: 2px;
-            }
-            QPushButton:hover {
-                background-color: rgba(255, 68, 68, 0.3);
-                border: 2px solid #ff4444;
-            }
-        """)
+        btn_delete.setStyleSheet(ui_theme.get_icon_btn_red())
         btn_delete.setCursor(Qt.CursorShape.PointingHandCursor)
         btn_delete.setToolTip("Delete this expense")
         btn_delete.clicked.connect(lambda checked=False: self.delete_expense())

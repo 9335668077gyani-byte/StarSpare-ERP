@@ -247,7 +247,7 @@ class ReportGenerator:
 
                 # index 4: qty (stock)
                 try:
-                    stock = int(row[4]) if row[4] is not None and str(row[4]).strip() != '' else 0
+                    stock = float(row[4]) if row[4] is not None and str(row[4]).strip() != '' else 0.0
                 except (ValueError, TypeError):
                     stock = 0
 
@@ -292,7 +292,7 @@ class ReportGenerator:
             total_parts = 0
 
         # Grand Total footer
-        clean_table_data.append(["", "", "GRAND TOTAL", "", str(total_qty), "", f"{total_val:,.2f}"])
+        clean_table_data.append(["", "", "GRAND TOTAL", "", f"{float(total_qty):g}", "", f"{total_val:,.2f}"])
 
         # ===================================================================
         # PASS 2: Executive Dashboard Block
@@ -373,7 +373,7 @@ class ReportGenerator:
     # 2. Sales / Billing Report
 
     # -----------------------------------------------------------------------
-    def generate_sales_report_pdf(self, sales_data, total_revenue, total_expenses, total_net, d_from, d_to):
+    def generate_sales_report_pdf(self, sales_data, total_revenue, total_expenses, total_net, total_cogs, d_from, d_to):
         """
         Generates a professional sales report with expense and profit summary.
         sales_data: list of tuples
@@ -419,9 +419,11 @@ class ReportGenerator:
 
         summary_data = [
             [Paragraph("TOTAL REVENUE", summary_title_style), 
+             Paragraph("TOTAL COGS", summary_title_style),
              Paragraph("TOTAL EXPENSES", summary_title_style), 
              Paragraph("NET PROFIT", summary_title_style)],
             [Paragraph(f"Rs. {total_revenue:,.2f}", summary_value_style), 
+             Paragraph(f"Rs. {total_cogs:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {total_expenses:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {total_net:,.2f}", summary_value_style)]
         ]
@@ -429,11 +431,12 @@ class ReportGenerator:
         # Color profit based on value
         profit_color = HEADER_GREEN if total_net >= 0 else colors.red
         
-        summary_table = Table(summary_data, colWidths=[60*mm, 60*mm, 60*mm])
+        summary_table = Table(summary_data, colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#007bff")), # Blue for Revenue
-            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#dc3545")), # Red for Expenses
-            ('BACKGROUND', (2, 0), (2, -1), profit_color),              # Green/Red for Profit
+            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#fd7e14")), # Orange for COGS
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor("#dc3545")), # Red for Expenses
+            ('BACKGROUND', (3, 0), (3, -1), profit_color),              # Green/Red for Profit
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -452,17 +455,38 @@ class ReportGenerator:
         ))
         elements.append(Spacer(1, 5 * mm))
 
-        headers = ["Date", "Invoice ID", "Customer Name", "Items", "Amount (Rs.)"]
+        headers = ["Date", "Invoice ID", "Customer Name", "Items", "Mode", "Amount (Rs.)"]
         data = [headers]
 
         for row in sales_data:
             try:
+                amt = _safe_float(row[4])
+                refund_amt = _safe_float(row[12]) if len(row) > 12 and row[12] else 0.0
+                actual_revenue = amt - refund_amt
+                
+                has_return = int(row[7]) > 0 if len(row) > 7 and row[7] else False
+                inv_id_clean = _clean(row[1])
+                if has_return:
+                    inv_id_clean += "\n[REFUND]" if actual_revenue <= 0 else "\n[P.RET]"
+                    
+                pay_mode_raw = str(row[11]) if len(row) > 11 else "CASH"
+                pay_mode = pay_mode_raw
+                if pay_mode_raw == "SPLIT":
+                    p_upi = float(row[9]) if len(row) > 9 and row[9] else 0.0
+                    p_cash = float(row[8]) if len(row) > 8 and row[8] else 0.0
+                    pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
+
+                amt_str = f"{actual_revenue:,.2f}"
+                if refund_amt > 0:
+                    amt_str += f"\n(-{refund_amt:g})"
+
                 data.append([
                     _clean(row[0]),
-                    _clean(row[1]),
+                    inv_id_clean,
                     _clean(row[2])[:38],
                     _clean(row[3]),
-                    f"{_safe_float(row[4]):,.2f}" if len(row) > 4 else "0.00",
+                    pay_mode,
+                    amt_str,
                 ])
             except Exception as e:
                 app_logger.warning(f"Sales PDF row error: {e}")
@@ -471,9 +495,10 @@ class ReportGenerator:
         if len(data) == 1:
             data.append(["-"] * len(headers))
 
-        col_widths = [28 * mm, 32 * mm, 65 * mm, 18 * mm, 32 * mm]
+        col_widths = [26 * mm, 28 * mm, 52 * mm, 16 * mm, 28 * mm, 30 * mm]
         extra = [
-            ("ALIGN", (3, 0), (4, -1), "RIGHT"),
+            ("ALIGN", (3, 0), (4, -1), "CENTER"),
+            ("ALIGN", (5, 0), (5, -1), "RIGHT"),
         ]
         t = Table(data, colWidths=col_widths, repeatRows=1)
         t.setStyle(_make_table_style(HEADER_GREEN, extra))
@@ -488,7 +513,7 @@ class ReportGenerator:
             app_logger.error(f"Failed to generate Sales PDF: {e}")
             return False, str(e)
 
-    def generate_daily_sales_report_pdf(self, sales_data, expense_data, total_revenue, d_from, d_to):
+    def generate_daily_sales_report_pdf(self, sales_data, expense_data, total_revenue, total_cogs, d_from, d_to):
         """
         Groups sales by date and shows a daily summary with expenses.
         sales_data: list of tuples (date, invoice_id, customer_name, items_count, total_amount, ...)
@@ -519,12 +544,14 @@ class ReportGenerator:
                 # Extract date only (YYYY-MM-DD)
                 raw_date = str(row[0]).split(' ')[0]
                 amount = _safe_float(row[4])
+                refund_amt = _safe_float(row[12]) if len(row) > 12 and row[12] else 0.0
+                actual_rev = amount - refund_amt
                 
                 if raw_date not in daily_map:
                     daily_map[raw_date] = {'count': 0, 'amount': 0.0}
                 
                 daily_map[raw_date]['count'] += 1
-                daily_map[raw_date]['amount'] += amount
+                daily_map[raw_date]['amount'] += actual_rev
             except:
                 continue
         
@@ -533,7 +560,7 @@ class ReportGenerator:
 
         styles = getSampleStyleSheet()
         total_exp = sum(expense_data.values()) if expense_data else 0.0
-        net_profit = total_revenue - total_exp
+        net_profit = total_revenue - total_exp - total_cogs
         
         # TOP NOTCH SUMMARY BOX
         summary_title_style = ParagraphStyle(
@@ -555,20 +582,23 @@ class ReportGenerator:
 
         summary_data = [
             [Paragraph("TOTAL REVENUE", summary_title_style), 
+             Paragraph("TOTAL COGS", summary_title_style),
              Paragraph("TOTAL EXPENSES", summary_title_style), 
              Paragraph("NET PROFIT", summary_title_style)],
             [Paragraph(f"Rs. {total_revenue:,.2f}", summary_value_style), 
+             Paragraph(f"Rs. {total_cogs:,.2f}", summary_value_style),
              Paragraph(f"Rs. {total_exp:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {net_profit:,.2f}", summary_value_style)]
         ]
         
         profit_color = HEADER_GREEN if net_profit >= 0 else colors.red
         
-        summary_table = Table(summary_data, colWidths=[60*mm, 60*mm, 60*mm])
+        summary_table = Table(summary_data, colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#007bff")), 
-            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#dc3545")), 
-            ('BACKGROUND', (2, 0), (2, -1), profit_color),              
+            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#fd7e14")), 
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor("#dc3545")), 
+            ('BACKGROUND', (3, 0), (3, -1), profit_color),              
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -580,7 +610,7 @@ class ReportGenerator:
         elements.append(summary_table)
         elements.append(Spacer(1, 10 * mm))
 
-        headers = ["Date", "Invoices", "Sales (Rs.)", "Expenses (Rs.)", "Net (Rs.)"]
+        headers = ["Date", "Invoices", "Sales (Rs.)", "Expenses (Rs.)", "Net ex-COGS (Rs.)"]
         data = [headers]
 
         # Combine dates from both sales and expenses
@@ -720,6 +750,8 @@ class ReportGenerator:
             ["Date:", _clean(po_header.get("Date", ""))],
             ["Status:", _clean(po_header.get("Status", ""))]
         ]
+        if "Global Discount" in po_header:
+            meta_data.append(["Global Disc:", _clean(po_header.get("Global Discount", ""))])
         
         t_meta = Table(meta_data, colWidths=[30 * mm, 100 * mm])
         t_meta.setStyle(TableStyle([
@@ -733,11 +765,15 @@ class ReportGenerator:
         elements.append(Spacer(1, 15))
         
         # 2. ITEM TABLE
-        headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Order Qty', 'Received', 'Pending', 'Unit Price', 'Total (Rs.)']
+        headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Qty', 'Rcvd', 'Pend', 'Disc %', 'Price', 'Total(Rs)']
         data = [headers]
         
         grand_total = 0.0
+        taxable_total = 0.0  # Total after all discounts, before GST
+        gst_total = 0.0      # Total GST added
+        base_total = 0.0     # Total before any discount (raw price × qty), for savings calc
         serial_no = 0
+        global_disc_pct = _safe_float(po_header.get("global_disc_raw", 0.0))
         
         # Cell style for wrapping part names
         cell_style = ParagraphStyle(
@@ -749,32 +785,49 @@ class ReportGenerator:
         
         for row in po_items:
             # db_manager.get_po_items returns:
-            # (id, part_id, part_name, qty_ordered, qty_received, ordered_price, hsn_code, gst_rate)
+            # (id, part_id, part_name, qty_ordered, qty_received, ordered_price, hsn_code, gst_rate, vendor_disc_percent)
             try:
                 serial_no += 1
                 part_id = _clean(row[1])
                 part_name = _clean(row[2])
-                qty_ordered = int(row[3]) if row[3] is not None else 0
-                qty_received = int(row[4]) if row[4] is not None else 0
+                qty_ordered = float(row[3]) if row[3] is not None else 0.0
+                qty_received = float(row[4]) if row[4] is not None else 0.0
                 pending = max(0, qty_ordered - qty_received)
                 ordered_price = _safe_float(row[5])
                 hsn_code = _clean(row[6])
                 gst_rate = _safe_float(row[7])
+                v_disc = _safe_float(row[8]) if len(row) > 8 else 0.0
                 
-                row_total = qty_ordered * ordered_price
+                # Apply V. DISC % then Global Discount, then GST (matches PO Create math)
+                # global_disc_pct declared before loop
+                after_v_disc = ordered_price * (1.0 - (v_disc / 100.0))
+                after_global = after_v_disc * (1.0 - (global_disc_pct / 100.0))
+                row_taxable = after_global * qty_ordered
+                row_gst = row_taxable * (gst_rate / 100.0)
+                row_total = row_taxable + row_gst
+                
+                # Accumulate totals for summary rows
+                base_total += ordered_price * qty_ordered
+                taxable_total += row_taxable
+                gst_total += row_gst
                 grand_total += row_total
+                
+                # Combined disc display
+                total_disc = v_disc + global_disc_pct - (v_disc * global_disc_pct / 100.0)  # Effective combined
+                disc_display = f"{total_disc:.1f}%" if total_disc > 0 else "-"
                 
                 data.append([
                     str(serial_no),
                     part_id,
                     Paragraph(part_name, cell_style),
-                    hsn_code,
+                    hsn_code if hsn_code else "N/A",
                     f"{gst_rate:.1f}",
-                    str(qty_ordered),
-                    str(qty_received),
+                    f"{float(qty_ordered):g}",
+                    f"{float(qty_received):g}",
                     str(pending),
-                    f"{ordered_price:.2f}",
-                    f"{row_total:.2f}"
+                    disc_display,
+                    f"{ordered_price:.2f}" if ordered_price > 0 else "N/A",
+                    f"{row_total:.2f}" if ordered_price > 0 else "N/A"
                 ])
             except Exception as e:
                 app_logger.warning(f"Single PO PDF row error: {e}")
@@ -783,15 +836,25 @@ class ReportGenerator:
         if len(data) == 1:
             data.append(["-"] * len(headers))
             
-        # Add summary row for GRAND TOTAL at bottom of table
-        data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+        # Calculate how much money was saved through discounts
+        savings_total = base_total - taxable_total  # base - discounted taxable = savings
+            
+        # Add summary rows at bottom of table
+        data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+        
+        # Show savings breakdown if any discount was applied
+        if savings_total > 0.01:
+            data.append(["", "", "  Taxable (Net)", "", "", "", "", "", "", "", f"{taxable_total:,.2f}"])
+            data.append(["", "", "  GST Amount", "", "", "", "", "", "", "", f"+{gst_total:,.2f}"])
+            data.append(["", "", "🏷 YOU SAVED", "", "", "", "", "", "", "", f"₹{savings_total:,.2f}"])
         
         # A4 Portrait usable width ~ 210mm - 30mm = 180mm
-        col_widths = [10 * mm, 20 * mm, 40 * mm, 12 * mm, 13 * mm, 16 * mm, 14 * mm, 14 * mm, 16 * mm, 25 * mm]
+        col_widths = [8 * mm, 18 * mm, 45 * mm, 15 * mm, 11 * mm, 11 * mm, 11 * mm, 11 * mm, 13 * mm, 15 * mm, 22 * mm]
         
         extra = [
             ("ALIGN", (0, 0), (0, -1), "CENTER"), # S.No
-            ("ALIGN", (3, 0), (9, -1), "RIGHT"),  # Numbers right
+            ("ALIGN", (3, 0), (8, -1), "CENTER"), # HSN to Disc % -> CENTER
+            ("ALIGN", (9, 0), (10, -1), "RIGHT"), # Price and Total -> RIGHT
             ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), # Grand total bold
             ("LINEABOVE", (0, -1), (-1, -1), 0.8, HEADER_ORANGE),
             ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff3cd"))
@@ -866,6 +929,8 @@ class ReportGenerator:
                 ["Date:", _clean(po_header.get("Date", ""))],
                 ["Status:", _clean(po_header.get("Status", ""))]
             ]
+            if "Global Discount" in po_header:
+                meta_data.append(["Global Disc:", _clean(po_header.get("Global Discount", ""))])
             t_meta = Table(meta_data, colWidths=[30 * mm, 100 * mm])
             t_meta.setStyle(TableStyle([
                 ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
@@ -878,7 +943,7 @@ class ReportGenerator:
             all_elements.append(Spacer(1, 15))
 
             # Item table
-            headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Order Qty', 'Received', 'Pending', 'Unit Price', 'Total (Rs.)']
+            headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Qty', 'Rcvd', 'Pend', 'Disc %', 'Price', 'Total(Rs)']
             data = [headers]
             grand_total = 0.0
             serial_no = 0
@@ -891,37 +956,53 @@ class ReportGenerator:
                 leading=9,
             )
 
+            # global_disc_pct from PO header (same key used by single PO PDF)
+            global_disc_pct = _safe_float(po_header.get("global_disc_raw", 0.0))
+
             for row in po_items:
                 try:
                     serial_no += 1
                     part_id = _clean(row[1])
                     part_name = _clean(row[2])
-                    qty_ordered = int(row[3]) if row[3] is not None else 0
-                    qty_received = int(row[4]) if row[4] is not None else 0
+                    qty_ordered = float(row[3]) if row[3] is not None else 0.0
+                    qty_received = float(row[4]) if row[4] is not None else 0.0
                     pending = max(0, qty_ordered - qty_received)
                     ordered_price = _safe_float(row[5])
                     hsn_code = _clean(row[6])
                     gst_rate = _safe_float(row[7])
+                    v_disc = _safe_float(row[8]) if len(row) > 8 else 0.0
 
-                    row_total = qty_ordered * ordered_price
-                    grand_total += row_total
+                    # Apply vendor disc → global disc → GST  (mirrors single-PO PDF)
+                    after_v_disc   = ordered_price * (1.0 - (v_disc / 100.0))
+                    after_global   = after_v_disc  * (1.0 - (global_disc_pct / 100.0))
+                    row_taxable    = after_global  * qty_ordered
+                    row_gst        = row_taxable   * (gst_rate / 100.0)
+                    row_total      = row_taxable   + row_gst
+                    grand_total   += row_total
+
+                    # Combined display disc %
+                    total_disc = v_disc + global_disc_pct - (v_disc * global_disc_pct / 100.0)
+                    disc_display = f"{total_disc:.1f}%" if total_disc > 0 else "-"
 
                     data.append([
-                        str(serial_no), part_id, Paragraph(part_name, cell_style), hsn_code,
-                        f"{gst_rate:.1f}", str(qty_ordered), str(qty_received), str(pending),
-                        f"{ordered_price:.2f}", f"{row_total:.2f}"
+                        str(serial_no), part_id, Paragraph(part_name, cell_style), hsn_code if hsn_code else "N/A",
+                        f"{gst_rate:.1f}", f"{float(qty_ordered):g}", f"{float(qty_received):g}", str(pending),
+                        disc_display,
+                        f"{ordered_price:.2f}" if ordered_price > 0 else "N/A",
+                        f"{row_total:.2f}"   if ordered_price > 0 else "N/A"
                     ])
                 except Exception as e:
                     app_logger.warning(f"Multi PO PDF row error: {e}")
                     continue
         
-            # Add grand total row
-            data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", f"{grand_total:,.2f}"])
-            col_widths = [10 * mm, 20 * mm, 40 * mm, 12 * mm, 13 * mm, 16 * mm, 14 * mm, 14 * mm, 16 * mm, 25 * mm]
+            # Grand total row
+            data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+            col_widths = [8 * mm, 18 * mm, 45 * mm, 15 * mm, 11 * mm, 11 * mm, 11 * mm, 11 * mm, 13 * mm, 15 * mm, 22 * mm]
             
             extra = [
                 ("ALIGN", (0, 0), (0, -1), "CENTER"), # S.No
-                ("ALIGN", (3, 0), (9, -1), "RIGHT"),  # Numbers right
+                ("ALIGN", (3, 0), (8, -1), "CENTER"), # HSN to Disc % -> CENTER
+                ("ALIGN", (9, 0), (10, -1), "RIGHT"), # Price and Total -> RIGHT
                 ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), # Grand total bold
                 ("LINEABOVE", (0, -1), (-1, -1), 0.8, HEADER_ORANGE),
                 ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff3cd"))
@@ -942,7 +1023,305 @@ class ReportGenerator:
             app_logger.error(f"Failed to generate multi PO PDF: {e}")
             return False, str(e)
 
-    def generate_comprehensive_report_pdf(self, sales_data, expense_data, total_revenue, total_expenses, total_net, d_from, d_to):
+    # -----------------------------------------------------------------------
+    # 6. SINGLE GRN PDF (Inward Bill Format)
+    # -----------------------------------------------------------------------
+    def generate_single_grn_pdf(self, po_header, po_items):
+        """
+        Generates a professional Goods Receipt Note (GRN) invoice.
+        Calculates totals based ONLY on received quantities.
+        po_header: dict with 'To', 'PO Number', 'Date', 'Status'
+        po_items: list of tuples from db_manager.get_po_items
+        """
+        if not REPORTLAB_AVAILABLE:
+            return False, "ReportLab not installed"
+
+        file_path = os.path.join(
+            "reports",
+            f"GRN_Bill_{_clean(po_header.get('PO Number', ''))}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        )
+
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=A4, # A4 Portrait
+            rightMargin=15 * mm, leftMargin=15 * mm,
+            topMargin=15 * mm, bottomMargin=15 * mm,
+        )
+        elements = self._get_shop_header_elements("GOODS RECEIPT NOTE (GRN) / INWARD BILL")
+        
+        styles = getSampleStyleSheet()
+        
+        # 1. METADATA BOX
+        meta_data = [
+            ["To:", _clean(po_header.get("To", ""))],
+            ["PO Number:", _clean(po_header.get("PO Number", ""))],
+            ["Date:", _clean(po_header.get("Date", ""))],
+            ["Status:", _clean(po_header.get("Status", ""))]
+        ]
+        if "Global Discount" in po_header:
+            meta_data.append(["Global Disc:", _clean(po_header.get("Global Discount", ""))])
+        
+        t_meta = Table(meta_data, colWidths=[30 * mm, 100 * mm])
+        t_meta.setStyle(TableStyle([
+            ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+            ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+            ("FONTSIZE", (0, 0), (-1, -1), 10),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        elements.append(t_meta)
+        elements.append(Spacer(1, 15))
+        
+        # 2. ITEM TABLE
+        headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Qty', 'Rcvd', 'Pend', 'Disc %', 'Price', 'Total(Rs)']
+        data = [headers]
+        
+        grand_total = 0.0
+        taxable_total = 0.0  
+        gst_total = 0.0      
+        base_total = 0.0     
+        serial_no = 0
+        global_disc_pct = _safe_float(po_header.get("global_disc_raw", 0.0))
+        
+        cell_style = ParagraphStyle(
+            "CellWrap",
+            parent=styles["Normal"],
+            fontSize=7,
+            leading=9,
+        )
+        
+        for row in po_items:
+            try:
+                qty_received = float(row[4]) if row[4] is not None else 0.0
+                if qty_received <= 0:
+                    continue # Skip items that haven't been received
+                    
+                serial_no += 1
+                part_id = _clean(row[1])
+                part_name = _clean(row[2])
+                qty_ordered = float(row[3]) if row[3] is not None else 0.0
+                pending = max(0, qty_ordered - qty_received)
+                ordered_price = _safe_float(row[5])
+                hsn_code = _clean(row[6])
+                gst_rate = _safe_float(row[7])
+                v_disc = _safe_float(row[8]) if len(row) > 8 else 0.0
+                
+                # Apply V. DISC % then Global Discount, then GST
+                after_v_disc = ordered_price * (1.0 - (v_disc / 100.0))
+                after_global = after_v_disc * (1.0 - (global_disc_pct / 100.0))
+                
+                # GRN specific: Multiply by RECEIVED quantity
+                row_taxable = after_global * qty_received
+                row_gst = row_taxable * (gst_rate / 100.0)
+                row_total = row_taxable + row_gst
+                
+                base_total += ordered_price * qty_received
+                taxable_total += row_taxable
+                gst_total += row_gst
+                grand_total += row_total
+                
+                total_disc = v_disc + global_disc_pct - (v_disc * global_disc_pct / 100.0)
+                disc_display = f"{total_disc:.1f}%" if total_disc > 0 else "-"
+                
+                data.append([
+                    str(serial_no),
+                    part_id,
+                    Paragraph(part_name, cell_style),
+                    hsn_code if hsn_code else "N/A",
+                    f"{gst_rate:.1f}",
+                    f"{float(qty_ordered):g}",
+                    f"{float(qty_received):g}",
+                    str(pending),
+                    disc_display,
+                    f"{ordered_price:.2f}" if ordered_price > 0 else "N/A",
+                    f"{row_total:.2f}" if ordered_price > 0 else "N/A"
+                ])
+            except Exception as e:
+                app_logger.warning(f"Single GRN PDF row error: {e}")
+                continue
+                
+        if len(data) == 1:
+            data.append(["-"] * len(headers))
+            
+        savings_total = base_total - taxable_total
+            
+        data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+        
+        if savings_total > 0.01:
+            data.append(["", "", "  Taxable (Net)", "", "", "", "", "", "", "", f"{taxable_total:,.2f}"])
+            data.append(["", "", "  GST Amount", "", "", "", "", "", "", "", f"+{gst_total:,.2f}"])
+            data.append(["", "", "🏷 YOU SAVED", "", "", "", "", "", "", "", f"₹{savings_total:,.2f}"])
+        
+        col_widths = [8 * mm, 18 * mm, 45 * mm, 15 * mm, 11 * mm, 11 * mm, 11 * mm, 11 * mm, 13 * mm, 15 * mm, 22 * mm]
+        
+        extra = [
+            ("ALIGN", (0, 0), (0, -1), "CENTER"), 
+            ("ALIGN", (3, 0), (8, -1), "CENTER"), 
+            ("ALIGN", (9, 0), (10, -1), "RIGHT"), 
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"), 
+            ("LINEABOVE", (0, -1), (-1, -1), 0.8, HEADER_ORANGE),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff3cd"))
+        ]
+        
+        t_items = Table(data, colWidths=col_widths, repeatRows=1)
+        t_items.setStyle(_make_table_style(HEADER_ORANGE, extra))
+        elements.append(t_items)
+        
+        elements.append(Spacer(1, 30))
+        sig_style = ParagraphStyle(
+            "Signature",
+            parent=styles["Normal"],
+            fontSize=10,
+            alignment=2,
+        )
+        elements.append(Paragraph("Authorized Signatory: ___________________", sig_style))
+        
+        try:
+            doc.build(elements)
+            app_logger.info(f"Single GRN PDF saved: {file_path}")
+            return True, file_path
+        except Exception as e:
+            app_logger.error(f"Failed to generate single GRN PDF: {e}")
+            return False, str(e)
+
+    # -----------------------------------------------------------------------
+    # 7. MERGED Multi-GRN PDF (All orders in one file, page by page)
+    # -----------------------------------------------------------------------
+    def generate_multi_grn_pdf(self, po_list):
+        """
+        Generates a single merged PDF with each GRN on its own page.
+        po_list: list of (po_header_dict, po_items_list) tuples
+        """
+        if not REPORTLAB_AVAILABLE:
+            return False, "ReportLab not installed"
+
+        file_path = os.path.join(
+            "reports",
+            f"GRN_Merged_{len(po_list)}_Orders_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        )
+
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=A4,
+            rightMargin=15 * mm, leftMargin=15 * mm,
+            topMargin=15 * mm, bottomMargin=15 * mm,
+        )
+
+        all_elements = []
+        styles = getSampleStyleSheet()
+        sig_style = ParagraphStyle(
+            "Signature",
+            parent=styles["Normal"],
+            fontSize=10,
+            alignment=2,
+        )
+
+        for idx, (po_header, po_items) in enumerate(po_list):
+            if idx > 0:
+                all_elements.append(PageBreak())
+
+            all_elements.extend(self._get_shop_header_elements("GOODS RECEIPT NOTE (GRN) / INWARD BILL"))
+
+            meta_data = [
+                ["To:", _clean(po_header.get("To", ""))],
+                ["PO Number:", _clean(po_header.get("PO Number", ""))],
+                ["Date:", _clean(po_header.get("Date", ""))],
+                ["Status:", _clean(po_header.get("Status", ""))]
+            ]
+            if "Global Discount" in po_header:
+                meta_data.append(["Global Disc:", _clean(po_header.get("Global Discount", ""))])
+            t_meta = Table(meta_data, colWidths=[30 * mm, 100 * mm])
+            t_meta.setStyle(TableStyle([
+                ("FONTNAME", (0, 0), (0, -1), "Helvetica-Bold"),
+                ("FONTNAME", (1, 0), (1, -1), "Helvetica"),
+                ("FONTSIZE", (0, 0), (-1, -1), 10),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ]))
+            all_elements.append(t_meta)
+            all_elements.append(Spacer(1, 15))
+
+            headers = ['S.No', 'Part ID', 'Part Name', 'HSN', 'GST %', 'Qty', 'Rcvd', 'Pend', 'Disc %', 'Price', 'Total(Rs)']
+            data = [headers]
+            grand_total = 0.0
+            serial_no = 0
+
+            cell_style = ParagraphStyle(
+                "CellWrapMulti",
+                parent=styles["Normal"],
+                fontSize=7,
+                leading=9,
+            )
+
+            global_disc_pct = _safe_float(po_header.get("global_disc_raw", 0.0))
+
+            for row in po_items:
+                try:
+                    qty_received = float(row[4]) if row[4] is not None else 0.0
+                    if qty_received <= 0:
+                        continue # Skip items not received
+                        
+                    serial_no += 1
+                    part_id = _clean(row[1])
+                    part_name = _clean(row[2])
+                    qty_ordered = float(row[3]) if row[3] is not None else 0.0
+                    pending = max(0, qty_ordered - qty_received)
+                    ordered_price = _safe_float(row[5])
+                    hsn_code = _clean(row[6])
+                    gst_rate = _safe_float(row[7])
+                    v_disc = _safe_float(row[8]) if len(row) > 8 else 0.0
+
+                    after_v_disc   = ordered_price * (1.0 - (v_disc / 100.0))
+                    after_global   = after_v_disc  * (1.0 - (global_disc_pct / 100.0))
+                    
+                    # GRN Specific: Use qty_received
+                    row_taxable    = after_global  * qty_received
+                    row_gst        = row_taxable   * (gst_rate / 100.0)
+                    row_total      = row_taxable   + row_gst
+                    grand_total   += row_total
+
+                    total_disc = v_disc + global_disc_pct - (v_disc * global_disc_pct / 100.0)
+                    disc_display = f"{total_disc:.1f}%" if total_disc > 0 else "-"
+
+                    data.append([
+                        str(serial_no), part_id, Paragraph(part_name, cell_style), hsn_code if hsn_code else "N/A",
+                        f"{gst_rate:.1f}", f"{float(qty_ordered):g}", f"{float(qty_received):g}", str(pending),
+                        disc_display,
+                        f"{ordered_price:.2f}" if ordered_price > 0 else "N/A",
+                        f"{row_total:.2f}"   if ordered_price > 0 else "N/A"
+                    ])
+                except Exception as e:
+                    app_logger.warning(f"Multi GRN PDF row error: {e}")
+                    continue
+        
+            data.append(["", "", "GRAND TOTAL", "", "", "", "", "", "", "", f"{grand_total:,.2f}"])
+            col_widths = [8 * mm, 18 * mm, 45 * mm, 15 * mm, 11 * mm, 11 * mm, 11 * mm, 11 * mm, 13 * mm, 15 * mm, 22 * mm]
+            
+            extra = [
+                ("ALIGN", (0, 0), (0, -1), "CENTER"),
+                ("ALIGN", (3, 0), (8, -1), "CENTER"),
+                ("ALIGN", (9, 0), (10, -1), "RIGHT"),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.8, HEADER_ORANGE),
+                ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#fff3cd"))
+            ]
+            
+            t_items = Table(data, colWidths=col_widths, repeatRows=1)
+            t_items.setStyle(_make_table_style(HEADER_ORANGE, extra))
+            all_elements.append(t_items)
+            
+            all_elements.append(Spacer(1, 30))
+            all_elements.append(Paragraph("Authorized Signatory: ___________________", sig_style))
+
+        try:
+            doc.build(all_elements)
+            app_logger.info(f"Multi GRN PDF saved: {file_path}")
+            return True, file_path
+        except Exception as e:
+            app_logger.error(f"Failed to generate multi GRN PDF: {e}")
+            return False, str(e)
+
+    def generate_comprehensive_report_pdf(self, sales_data, expense_data, total_revenue, total_expenses, total_net, total_cogs, d_from, d_to):
         """
         Creates a deeply detailed report grouping sales (with items) and expenses by date.
         """
@@ -969,15 +1348,16 @@ class ReportGenerator:
         summary_val_style = ParagraphStyle("S2", parent=styles["Normal"], fontSize=16, textColor=colors.white, alignment=1, fontName="Helvetica-Bold")
 
         sum_table = Table([
-            [Paragraph("REVENUE", summary_title_style), Paragraph("EXPENSES", summary_title_style), Paragraph("NET PROFIT", summary_title_style)],
-            [Paragraph(f"Rs. {total_revenue:,.2f}", summary_val_style), Paragraph(f"Rs. {total_expenses:,.2f}", summary_val_style), Paragraph(f"Rs. {total_net:,.2f}", summary_val_style)]
-        ], colWidths=[61*mm, 61*mm, 61*mm])
+            [Paragraph("REVENUE", summary_title_style), Paragraph("COGS", summary_title_style), Paragraph("EXPENSES", summary_title_style), Paragraph("NET PROFIT", summary_title_style)],
+            [Paragraph(f"Rs. {total_revenue:,.2f}", summary_val_style), Paragraph(f"Rs. {total_cogs:,.2f}", summary_val_style), Paragraph(f"Rs. {total_expenses:,.2f}", summary_val_style), Paragraph(f"Rs. {total_net:,.2f}", summary_val_style)]
+        ], colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
         
         p_color = HEADER_GREEN if total_net >= 0 else colors.red
         sum_table.setStyle(TableStyle([
-            ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#28a745")), # Green
-            ('BACKGROUND', (1,0), (1,-1), colors.HexColor("#dc3545")), # Red
-            ('BACKGROUND', (2,0), (2,-1), p_color),
+            ('BACKGROUND', (0,0), (0,-1), colors.HexColor("#007bff")), # Blue
+            ('BACKGROUND', (1,0), (1,-1), colors.HexColor("#fd7e14")), # Orange
+            ('BACKGROUND', (2,0), (2,-1), colors.HexColor("#dc3545")), # Red
+            ('BACKGROUND', (3,0), (3,-1), p_color),
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('BOTTOMPADDING', (0,0), (-1,-1), 12),
             ('TOPPADDING', (0,0), (-1,-1), 12),
@@ -1010,27 +1390,108 @@ class ReportGenerator:
             # --- Sales Section ---
             if data['sales']:
                 elements.append(Paragraph("🛒 Invoices", ParagraphStyle("SubH", parent=styles["Normal"], fontSize=10, fontName="Helvetica-Bold", textColor=HEADER_GREEN)))
-                s_headers = ["Inv ID", "Customer", "Parts Sold", "Amount (Rs.)"]
+                s_headers = ["Inv", "Customer", "Code", "Item Name", "Qty", "MRP", "Disc", "ItemTot", "InvTot", "Mode"]
                 s_table_data = [s_headers]
                 
                 for s in data['sales']:
-                    # Extract parts from JSON items (index 5)
+                    has_return = int(s[7]) > 0 if len(s) > 7 and s[7] else False
+                    inv_id_clean = _clean(s[1]).replace("INV-", "") # short
+                    
+                    amt = _safe_float(s[4])
+                    refund_amt = _safe_float(s[12]) if len(s) > 12 and s[12] else 0.0
+                    actual_revenue = amt - refund_amt
+                    
+                    if has_return:
+                        inv_id_clean += "\n[REFUND]" if actual_revenue <= 0 else "\n[P.RET]"
+                        
+                    cust_clean = _clean(s[2])[:20]
+                    
+                    if refund_amt > 0:
+                        inv_total = f"{actual_revenue:,.2f}\n(-{refund_amt:g})"
+                    else:
+                        inv_total = f"{actual_revenue:,.2f}"
+                    
                     try:
                         import json
-                        parts_list = json.loads(s[5]) if s[5] else []
-                        parts_str = ", ".join([f"{p.get('name','?')} (x{p.get('qty',1)})" for p in parts_list])
-                    except:
-                        parts_str = "-"
-                    
-                    s_table_data.append([
-                        _clean(s[1]),
-                        _clean(s[2])[:25],
-                        Paragraph(parts_str, item_style),
-                        f"{_safe_float(s[4]):,.2f}"
-                    ])
+                        parsed = json.loads(s[5]) if s[5] else []
+                        if isinstance(parsed, dict):
+                            parts_list = parsed.get('cart', [])
+                        else:
+                            parts_list = parsed if isinstance(parsed, list) else []
+                            
+                        # Keep only valid parts
+                        parts_list = [p for p in parts_list if isinstance(p, dict)]
+                        
+                        if not parts_list:
+                            pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
+                            pay_mode = pay_mode_raw
+                            if pay_mode_raw == "SPLIT":
+                                p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
+                                p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
+                                pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
+                                
+                            s_table_data.append([inv_id_clean, cust_clean, "-", "-", "-", "-", "-", "-", inv_total, pay_mode])
+                            continue
+                            
+                        # Add a row for EACH part!
+                        for i, p in enumerate(parts_list):
+                            part_code = p.get('sys_id', p.get('part_id', '?'))
+                            part_name = p.get('name', p.get('part_name', '?'))
+                            qty = str(p.get('qty', p.get('quantity', 1)))
+                            try:
+                                mrp = float(p.get('base_price', p.get('price', 0)))
+                                price = float(p.get('price', 0))
+                            except:
+                                mrp, price = 0.0, 0.0
+                            
+                            disc_perc = ((mrp - price) / mrp * 100) if (mrp > 0 and price < mrp) else 0.0
+                            disc_str = f"{disc_perc:.1f}%" if disc_perc > 0 else "-"
+                            mrp_str = f"{mrp:.1f}" if mrp > 0 else "-"
+                            
+                            try:
+                                item_total = float(p.get('total', price * float(qty)))
+                            except:
+                                item_total = 0.0
+                            item_tot_str = f"{item_total:.2f}" if item_total > 0 else "-"
+                            
+                            # Only show Invoice details on the first row of that invoice group
+                            row_inv = inv_id_clean if i == 0 else ""
+                            row_cust = cust_clean if i == 0 else ""
+                            row_tot = inv_total if i == 0 else ""
+                            
+                            pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
+                            pay_mode = pay_mode_raw
+                            if pay_mode_raw == "SPLIT":
+                                p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
+                                p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
+                                pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
+                            
+                            row_mode = pay_mode if i == 0 else ""
+                            
+                            s_table_data.append([
+                                row_inv, 
+                                row_cust, 
+                                Paragraph(part_code, item_style), 
+                                Paragraph(part_name, item_style), 
+                                qty, mrp_str, disc_str, item_tot_str, row_tot, row_mode
+                            ])
+                            
+                    except Exception as e:
+                        pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
+                        pay_mode = pay_mode_raw
+                        if pay_mode_raw == "SPLIT":
+                            p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
+                            p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
+                            pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
+                                
+                        s_table_data.append([inv_id_clean, cust_clean, "-", "Error parsing items", "-", "-", "-", "-", inv_total, pay_mode])
                 
-                st = Table(s_table_data, colWidths=[25*mm, 40*mm, 85*mm, 35*mm])
-                st.setStyle(_make_table_style(HEADER_GREEN, [('ALIGN',(3,0),(3,-1),'RIGHT'), ('FONTSIZE',(0,0),(-1,-1),8)]))
+                st = Table(s_table_data, colWidths=[12*mm, 20*mm, 18*mm, 36*mm, 8*mm, 12*mm, 10*mm, 16*mm, 16*mm, 32*mm])
+                st.setStyle(_make_table_style(HEADER_GREEN, [
+                    ('ALIGN', (4, 0), (9, -1), 'CENTER'), # Qty to Mode centered
+                    ('ALIGN', (7, 0), (8, -1), 'RIGHT'),  # Item Tot and Inv Tot aligned right
+                    ('FONTSIZE', (0, 0), (-1, -1), 8)
+                ]))
                 elements.append(st)
                 elements.append(Spacer(1, 4 * mm))
 
@@ -1059,4 +1520,120 @@ class ReportGenerator:
             return True, file_path
         except Exception as e:
             app_logger.error(f"Comprehensive PDF Error: {e}")
+            return False, str(e)
+
+    # -----------------------------------------------------------------------
+    # 6. Vendor Purchase Statement
+    # -----------------------------------------------------------------------
+    def generate_vendor_statement_pdf(self, vendor_name, d_from, d_to, po_data, total_amount, total_items):
+        """
+        Generates a professional purchase statement for a specific vendor.
+        po_data: list of tuples (po_id, date, status, items_count, total_amount)
+        """
+        if not REPORTLAB_AVAILABLE:
+            return False, "ReportLab not installed"
+
+        file_path = os.path.join(
+            "reports",
+            f"Vendor_Statement_{_clean(vendor_name)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        )
+
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=A4,
+            rightMargin=15 * mm, leftMargin=15 * mm,
+            topMargin=15 * mm, bottomMargin=15 * mm,
+        )
+        title_text = f"VENDOR PURCHASE STATEMENT"
+        elements = self._get_shop_header_elements(title_text)
+
+        styles = getSampleStyleSheet()
+        
+        # Secondary info
+        date_str = f"Date Range: {_clean(d_from)} to {_clean(d_to)}"
+        elements.append(Paragraph(
+            f"<b>Supplier:</b> {_clean(vendor_name)}    |    {date_str}",
+            ParagraphStyle("SubInfo", parent=styles["Normal"], fontSize=11, textColor=colors.HexColor("#333333"), alignment=1)
+        ))
+        elements.append(Spacer(1, 8 * mm))
+
+        # 1. SUMMARY BOX
+        summary_title_style = ParagraphStyle(
+            "SummaryTitle",
+            parent=styles["Normal"],
+            fontSize=10,
+            textColor=colors.white,
+            alignment=1,
+            fontName="Helvetica-Bold",
+        )
+        summary_value_style = ParagraphStyle(
+            "SummaryValue",
+            parent=styles["Normal"],
+            fontSize=16,
+            textColor=colors.white,
+            alignment=1,
+            fontName="Helvetica-Bold",
+        )
+
+        summary_data = [
+            [Paragraph("TOTAL SPEND", summary_title_style), 
+             Paragraph("TOTAL ORDERS", summary_title_style),
+             Paragraph("ITEMS PROCURED", summary_title_style)],
+            [Paragraph(f"Rs. {total_amount:,.2f}", summary_value_style), 
+             Paragraph(str(len(po_data)), summary_value_style), 
+             Paragraph(str(total_items), summary_value_style)]
+        ]
+        
+        summary_table = Table(summary_data, colWidths=[60*mm, 60*mm, 60*mm])
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#17a2b8")), # Cyan/Teal for Spend
+            ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#6c757d")), # Grey for Orders
+            ('BACKGROUND', (2, 0), (2, -1), colors.HexColor("#fd7e14")), # Orange for Items
+            ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 12),
+            ('TOPPADDING', (0, 0), (-1, -1), 12),
+            ('GRID', (0, 0), (-1, -1), 1, colors.white),
+        ]))
+        
+        elements.append(summary_table)
+        elements.append(Spacer(1, 10 * mm))
+
+        # 2. DATA TABLE
+        headers = ["Date", "PO ID", "Status", "Items", "Amount (Rs.)"]
+        data = [headers]
+
+        for row in po_data:
+            try:
+                # row: (id, date, status, item_count, total)
+                data.append([
+                    _clean(row[1])[:10], # Date
+                    _clean(row[0]),      # PO ID
+                    _clean(row[2]),      # Status
+                    str(row[3]),         # Items
+                    f"{_safe_float(row[4]):,.2f}" if len(row) > 4 else "0.00",
+                ])
+            except Exception as e:
+                app_logger.warning(f"Vendor Statement PDF row error: {e}")
+                continue
+
+        if len(data) == 1:
+            data.append(["-"] * len(headers))
+
+        col_widths = [35 * mm, 45 * mm, 30 * mm, 25 * mm, 45 * mm]
+        extra = [
+            ("ALIGN", (3, 0), (4, -1), "RIGHT"),
+        ]
+        t = Table(data, colWidths=col_widths, repeatRows=1)
+        t.setStyle(_make_table_style(colors.HexColor("#17a2b8"), extra))
+
+        elements.append(t)
+
+        try:
+            doc.build(elements)
+            app_logger.info(f"Vendor Statement PDF saved: {file_path}")
+            return True, file_path
+        except Exception as e:
+            app_logger.error(f"Failed to generate Vendor Statement PDF: {e}")
             return False, str(e)

@@ -1,11 +1,12 @@
-from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel, 
-                             QPushButton, QFrame, QWidget, QGraphicsDropShadowEffect, QGraphicsOpacityEffect)
-from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QPoint, QPropertyAnimation, QEasingCurve, QTimer
-from PyQt6.QtGui import (QColor, QFont, QPainter, QPainterPath, QPen, QBrush, 
-                          QRadialGradient, QLinearGradient)
+from PyQt6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,  # type: ignore
+                             QPushButton, QFrame, QWidget, QGraphicsDropShadowEffect, QGraphicsOpacityEffect)  # type: ignore
+from PyQt6.QtCore import Qt, pyqtSignal, QRectF, QPointF, QPoint, QPropertyAnimation, QEasingCurve, QTimer  # type: ignore
+from PyQt6.QtGui import (QColor, QFont, QPainter, QPainterPath, QPen, QBrush,  # type: ignore
+                          QRadialGradient, QLinearGradient)  # type: ignore
 import math
 import time
-from styles import COLOR_ACCENT_CYAN, STYLE_NEON_BUTTON, COLOR_ACCENT_AMBER, COLOR_ACCENT_GREEN, COLOR_ACCENT_RED
+from styles import COLOR_ACCENT_CYAN, COLOR_ACCENT_AMBER, COLOR_ACCENT_GREEN, COLOR_ACCENT_RED  # type: ignore
+import ui_theme
 import random
 
 class TechCard(QFrame):
@@ -14,7 +15,7 @@ class TechCard(QFrame):
     Simulates the 'Mechanical' HUD look.
     """
     def __init__(self, title, value_widget, glow_color=COLOR_ACCENT_CYAN, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.glow_color = QColor(glow_color)
         self.title = title
         self.value_widget = value_widget
@@ -41,7 +42,7 @@ class TechCard(QFrame):
         self.layout.addWidget(self.sparkline)
         
         # Tech Card Levitation Animation
-        self.levitation_offset = 0
+        self.levitation_offset = 0.0
         self.anim_timer = QTimer(self)
         self.anim_timer.timeout.connect(self.update_levitation)
         self.anim_timer.start(50)
@@ -128,7 +129,7 @@ class TechCard(QFrame):
 class ProDialog(QDialog):
     """Base class for all custom dialogs in the app"""
     def __init__(self, parent=None, title="Dialog", width=400, height=200):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.setFixedSize(width, height)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.Dialog)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -227,7 +228,7 @@ class ProMessageBox(ProDialog):
             if mode == "DELETE":
                  btn_yes.setStyleSheet("background-color: #f44336; color: white; border: none; border-radius: 4px; padding: 8px; font-weight: bold;")
             else:
-                 btn_yes.setStyleSheet(STYLE_NEON_BUTTON)
+                 btn_yes.setStyleSheet(ui_theme.get_primary_button_style())
             
             btn_yes.clicked.connect(self.accept_yes)
             
@@ -242,7 +243,7 @@ class ProMessageBox(ProDialog):
         else: # OK Only
             btn_ok = QPushButton("OK")
             btn_ok.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn_ok.setStyleSheet(STYLE_NEON_BUTTON)
+            btn_ok.setStyleSheet(ui_theme.get_primary_button_style())
             btn_ok.clicked.connect(self.accept)
             btn_layout.addWidget(btn_ok)
             
@@ -285,9 +286,9 @@ class CyberSidebarButton(QWidget):
     clicked = pyqtSignal()
     
     def __init__(self, text, icon_text, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedSize(90, 85)
+        self.setFixedSize(72, 68)
         
         self.is_active = False
         self.is_hovered = False
@@ -301,12 +302,12 @@ class CyberSidebarButton(QWidget):
         
         # 1. Reactor Box (Container for Icon)
         self.reactor_box = QFrame()
-        self.reactor_box.setFixedSize(48, 48)
+        self.reactor_box.setFixedSize(36, 36)
         
         # Icon inside Box
         self.lbl_icon = QLabel(icon_text, self.reactor_box)
         self.lbl_icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_icon.setGeometry(0, 0, 48, 48)
+        self.lbl_icon.setGeometry(0, 0, 36, 36)
 
         # Effect for Pulse
         self.reactor_eff = QGraphicsOpacityEffect(self.reactor_box)
@@ -384,8 +385,8 @@ class CyberSidebarButton(QWidget):
                     border-left: 3px solid {COLOR_ACCENT_CYAN}; /* Solid Cyan Bar (Spec Update) */
                 }}
             """)
-            self.lbl_icon.setStyleSheet(f"color: #fff; font-size: 24px; {lbl_style_base}")
-            self.lbl_text.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 10px; font-weight: 800; letter-spacing: 2px; font-family: 'Orbitron'; {lbl_style_base}")
+            self.lbl_icon.setStyleSheet(f"color: #fff; font-size: 18px; {lbl_style_base}")
+            self.lbl_text.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 9px; font-weight: 800; letter-spacing: 1.5px; font-family: 'Orbitron'; {lbl_style_base}")
             
             # Shimmer is handled in paintEvent
             
@@ -397,8 +398,8 @@ class CyberSidebarButton(QWidget):
                     {shape_style}
                 }}
             """)
-             self.lbl_icon.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 24px; {lbl_style_base}")
-             self.lbl_text.setStyleSheet(f"color: white; font-size: 10px; font-weight: bold; letter-spacing: 1.5px; {lbl_style_base}")
+             self.lbl_icon.setStyleSheet(f"color: {COLOR_ACCENT_CYAN}; font-size: 18px; {lbl_style_base}")
+             self.lbl_text.setStyleSheet(f"color: white; font-size: 9px; font-weight: bold; letter-spacing: 1px; {lbl_style_base}")
             
         else:
             # Inactive State: Dim, Faint Tech
@@ -409,8 +410,8 @@ class CyberSidebarButton(QWidget):
                     {shape_style}
                 }}
             """)
-            self.lbl_icon.setStyleSheet(f"color: #445566; font-size: 24px; {lbl_style_base}")
-            self.lbl_text.setStyleSheet(f"color: #445566; font-size: 10px; font-weight: bold; letter-spacing: 1px; {lbl_style_base}")
+            self.lbl_icon.setStyleSheet(f"color: #445566; font-size: 18px; {lbl_style_base}")
+            self.lbl_text.setStyleSheet(f"color: #445566; font-size: 9px; font-weight: bold; letter-spacing: 1px; {lbl_style_base}")
 
     def paintEvent(self, event):
         if not (self.is_active or self.is_hovered):
@@ -453,10 +454,10 @@ class CyberSidebarButton(QWidget):
         painter.setOpacity(0.4)
         painter.drawPath(path)
 
-from PyQt6.QtWidgets import QSplashScreen, QApplication
-from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QLinearGradient, QRadialGradient
-from styles import COLOR_ACCENT_CYAN
+from PyQt6.QtWidgets import QSplashScreen, QApplication  # type: ignore
+from PyQt6.QtCore import QTimer, Qt, QRectF, QPointF  # type: ignore
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QLinearGradient, QRadialGradient  # type: ignore
+from styles import COLOR_ACCENT_CYAN  # type: ignore
 
 class SciFiSplashScreen(QSplashScreen):
     """
@@ -469,7 +470,7 @@ class SciFiSplashScreen(QSplashScreen):
         # Create a transparent pixmap
         pixmap = QPixmap(500, 300)
         pixmap.fill(Qt.GlobalColor.transparent)
-        super().__init__(pixmap)
+        super().__init__(pixmap)  # type: ignore
         
         self.setWindowFlags(Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.FramelessWindowHint)
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
@@ -490,7 +491,7 @@ class SciFiSplashScreen(QSplashScreen):
         self.is_finished = False
         
         # Pulse for charging effect
-        self.pulse_alpha = 0
+        self.pulse_alpha = 0.0
         
         # Timer
         self.timer = QTimer(self)
@@ -623,13 +624,13 @@ class SparklineWidget(QWidget):
     Minimalist glowing line graph for financial cards.
     """
     def __init__(self, color=COLOR_ACCENT_CYAN, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.color = QColor(color)
         self.points = [random.uniform(0.3, 0.7) for _ in range(12)]
         self.setFixedHeight(30)
         
         # Ambient pulse animation
-        self.pulse = 0
+        self.pulse = 0.0
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_pulse)
         self.timer.start(100)
@@ -677,49 +678,34 @@ class SparklineWidget(QWidget):
 
 class ReactorStatCard(QWidget):
     """
-    A futuristic Stat Card with a rotating 'Arc Reactor' ring around the value.
-    Replaces static stat cards with something alive.
+    A futuristic Stat Card with a sleek, rectangular cyberpunk scanner design.
+    Replaces the previous circular arc reactor design.
     """
     def __init__(self, title, value, color=COLOR_ACCENT_CYAN, parent=None, small=False):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.title = title
         self.value = value
         self.color = QColor(color)
         self.small = small
         
         # Dimensions
-        self.setFixedSize(160, 160) if not small else self.setFixedSize(120, 100)
+        if not small:
+            self.setFixedSize(220, 110)
+        else:
+            self.setFixedSize(160, 75)
         
-        # Adjust size based on mode
-        r_outer = 60 if not self.small else 35
-        r_inner = 45 if not self.small else 25
-
-        self.angle_outer = 0
-        self.angle_inner = 0
+        # Scanner animation
+        self.scan_pos = 0.0
         
-        # Particles
-        self.particles = []
-        for _ in range(15):
-            self.particles.append({
-                'angle': random.uniform(0, 360),
-                'speed': random.uniform(1, 3),
-                'dist': random.uniform(r_inner, r_outer),
-                'size': random.uniform(1, 3),
-                'alpha': random.randint(100, 255)
-            })
-        
-        # Timer
+        # Timer for subtle cyber pulse
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.update_animation)
-        self.timer.start(30) # High refresh for particles
+        self.timer.start(50) 
         
     def update_animation(self):
-        self.angle_outer = (self.angle_outer + 1.5) % 360
-        self.angle_inner = (self.angle_inner - 2.5) % 360
-        
-        # Update particles
-        for p in self.particles:
-            p['angle'] = (p['angle'] + p['speed']) % 360
+        self.scan_pos += 0.03
+        if self.scan_pos > 1.2:
+            self.scan_pos = -0.2
             
         self.update() 
         
@@ -732,88 +718,102 @@ class ReactorStatCard(QWidget):
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         w, h = self.width(), self.height()
-        cx, cy = w / 2, h / 2
-        center = QPointF(cx, cy)
+        rect = QRectF(0, 0, w, h)
         
-        # Adjust size based on mode
-        r_outer = 60 if not self.small else 35
-        r_inner = 45 if not self.small else 25
-        
-        # 1. Background Glow (Intense Plasma)
-        radial = QRadialGradient(center, r_outer + 30)
         c_glow = QColor(self.color)
-        c_glow.setAlpha(60)
-        radial.setColorAt(0, c_glow)
-        radial.setColorAt(0.7, QColor(0,0,0,0))
-        painter.setBrush(QBrush(radial))
+        c_bg = QColor(10, 15, 25, 220)
+        
+        # 1. Base Plate
         painter.setPen(Qt.PenStyle.NoPen)
-        painter.drawEllipse(center, r_outer+30, r_outer+30)
-
-        # 2. Outer Rotating Ring (Plasma Segments)
-        painter.save()
-        painter.translate(center)
-        painter.rotate(self.angle_outer)
+        painter.setBrush(c_bg)
         
-        pen = QPen(self.color)
-        pen.setWidth(4 if not self.small else 2)
-        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        path = QPainterPath()
+        clip = 12
+        path.moveTo(clip, 0)
+        path.lineTo(w, 0)
+        path.lineTo(w, h - clip)
+        path.lineTo(w - clip, h)
+        path.lineTo(0, h)
+        path.lineTo(0, clip)
+        path.closeSubpath()
+        painter.drawPath(path)
+        
+        # 2. Glowing Borders
+        pen = QPen(c_glow)
+        pen.setWidth(2)
         painter.setPen(pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        painter.drawPath(path)
         
-        # Draw 3 arcs for a more complex "Reactor" look
-        for i in range(3):
-            painter.drawArc(int(-r_outer), int(-r_outer), int(r_outer*2), int(r_outer*2), (i*120)*16, 80*16)
+        # Thick left accent line
+        pen_thick = QPen(c_glow)
+        pen_thick.setWidth(4)
+        painter.setPen(pen_thick)
+        painter.drawLine(0, clip, 0, int(h - 2))
+        
+        # 3. Cyber Grid / Scanner effect
+        painter.save()
+        painter.setClipPath(path)
+        
+        # Scanline
+        scan_y = h * self.scan_pos
+        c_scan = QColor(self.color)
+        c_scan.setAlpha(80)
+        
+        grad = QLinearGradient(0, scan_y - 20, 0, scan_y)
+        grad.setColorAt(0, QColor(0,0,0,0))
+        grad.setColorAt(1, c_scan)
+        
+        painter.fillRect(QRectF(0, scan_y - 20, w, 20), grad)
+        
+        # Scanner bar
+        c_bar = QColor(self.color)
+        c_bar.setAlpha(180)
+        painter.fillRect(QRectF(0, scan_y, w, 2), c_bar)
         
         painter.restore()
         
-        # 3. Inner Rotating Ring (Tech Dotted)
-        painter.save()
-        painter.translate(center)
-        painter.rotate(self.angle_inner)
+        # 4. Content (Title & Value)
+        # Title
+        painter.setPen(QColor("#88aacc"))
+        font_title = QFont("Rajdhani", 9 if self.small else 11, QFont.Weight.Bold)
+        font_title.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2)
+        painter.setFont(font_title)
         
-        pen.setWidth(1)
-        pen.setStyle(Qt.PenStyle.DotLine)
-        painter.setPen(pen)
-        painter.drawEllipse(int(-r_inner), int(-r_inner), int(r_inner*2), int(r_inner*2))
+        y_offset = 12 if self.small else 20
+        title_rect = QRectF(15, y_offset, w - 30, 20)
+        painter.drawText(title_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop, self.title.upper())
         
-        painter.restore()
-
-        # 4. Particles (Plasma Dust)
-        for p in self.particles:
-            px = cx + p['dist'] * math.cos(math.radians(p['angle']))
-            py = cy + p['dist'] * math.sin(math.radians(p['angle']))
-            
-            p_color = QColor(self.color)
-            p_color.setAlpha(p['alpha'])
-            painter.setBrush(p_color)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.drawEllipse(QPointF(px, py), p['size'], p['size'])
-        
-        # 5. Central Value
+        # Value
         painter.setPen(QColor("white"))
-        font = QFont("Orbitron" if not self.small else "Segoe UI", 20 if not self.small else 14, QFont.Weight.Bold)
-        painter.setFont(font)
+        font_val = QFont("Orbitron" if not self.small else "Segoe UI", 18 if not self.small else 16, QFont.Weight.Bold)
+        painter.setFont(font_val)
         
-        val_rect = QRectF(0, cy - 15, w, 30)
-        painter.drawText(val_rect, Qt.AlignmentFlag.AlignCenter, str(self.value))
+        val_y = 35 if self.small else 50
+        val_rect = QRectF(15, val_y, w - 30, h - val_y - 10)
+        painter.drawText(val_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, str(self.value))
         
-        # 6. Label (Bottom - Floating)
-        painter.setPen(QColor("#8899aa"))
-        font = QFont("Rajdhani", 10 if not self.small else 8, QFont.Weight.Bold)
-        font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 2)
-        painter.setFont(font)
+        # 5. Decorative Tech Elements
+        painter.setPen(Qt.PenStyle.NoPen)
+        c_dec = QColor(self.color)
+        c_dec.setAlpha(150)
+        painter.setBrush(c_dec)
         
-        lbl_rect = QRectF(0, h - 25, w, 20)
-        painter.drawText(lbl_rect, Qt.AlignmentFlag.AlignCenter, self.title.upper())
+        # Little squares at bottom right
+        square_size = 4
+        spacing = 6
+        for i in range(3):
+            painter.drawRect(int(w - 15 - (i * spacing)), int(h - 10), square_size, square_size)
 
-from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QLabel, QLineEdit, QTextEdit)
-from PyQt6.QtCore import Qt, QTimer, QPointF, pyqtSignal
+from PyQt6.QtWidgets import (QFrame, QVBoxLayout, QLabel, QLineEdit, QTextEdit)  # type: ignore
+from PyQt6.QtCore import Qt, QTimer, QPointF, pyqtSignal  # type: ignore
 
 class LiveTerminal(QFrame):
     """
     High-End AI Command Terminal with holographic effects and premium design.
     """
     def __init__(self, ai_assistant=None, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.ai_assistant = ai_assistant
         self.setMinimumHeight(120)
         
@@ -1083,7 +1083,7 @@ class LiveTerminal(QFrame):
             self._process_typewriter()
             
         from datetime import datetime
-        from PyQt6.QtGui import QTextCursor, QTextCharFormat, QColor
+        from PyQt6.QtGui import QTextCursor, QTextCharFormat, QColor  # type: ignore
         now = datetime.now().strftime("%H:%M:%S")
         
         cursor = self.log_area.textCursor()
@@ -1106,7 +1106,7 @@ class LiveTerminal(QFrame):
         self.log_area.setTextCursor(cursor)
 
     def _append_chunk(self, chunk):
-        from PyQt6.QtGui import QTextCursor
+        from PyQt6.QtGui import QTextCursor  # type: ignore
         cursor = self.log_area.textCursor()
         cursor.movePosition(QTextCursor.MoveOperation.End)
         self.log_area.setTextCursor(cursor)
@@ -1128,7 +1128,7 @@ class LiveTerminal(QFrame):
         # Process via Ollama Worker
         if self.ai_assistant:
             self.start_streaming_log("AI")
-            from ai_manager import OllamaWorker
+            from ai_manager import OllamaWorker  # type: ignore
             self.ollama_worker = OllamaWorker(text)
             self.ollama_worker.chunk_received.connect(self._append_chunk)
             self.ollama_worker.error_signal.connect(lambda e: self.add_log(f"Ollama Error: {e}", "ERROR"))
@@ -1143,7 +1143,7 @@ class AINexusNode(QFrame):
     Cycles through smart insights generated from real data.
     """
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.setFixedHeight(70)
         self.setStyleSheet("""
             background-color: rgba(140, 0, 255, 0.1); 
@@ -1205,7 +1205,7 @@ class TopPerformerWidget(QFrame):
     Displays a list of top performing items (e.g. Top Sales, Top Parts).
     """
     def __init__(self, title, icon_emoji="🏆", parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.setMinimumWidth(280) 
         self.setStyleSheet("""
             QFrame {
@@ -1284,12 +1284,12 @@ class TopPerformerWidget(QFrame):
             self.list_layout.addWidget(row)
 
 
-from PyQt6.QtWidgets import QStyledItemDelegate, QStyle
-from PyQt6.QtCore import QSize, QRect, QTimer, QEvent, Qt, pyqtSignal
-from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen
+from PyQt6.QtWidgets import QStyledItemDelegate, QStyle  # type: ignore
+from PyQt6.QtCore import QSize, QRect, QTimer, QEvent, Qt, pyqtSignal  # type: ignore
+from PyQt6.QtGui import QColor, QFont, QFontMetrics, QPainter, QPen  # type: ignore
 import time
 import math
-from styles import COLOR_TEXT_PRIMARY, COLOR_ACCENT_CYAN
+from styles import COLOR_TEXT_PRIMARY, COLOR_ACCENT_CYAN  # type: ignore
 
 class ProTableDelegate(QStyledItemDelegate):
     """
@@ -1303,7 +1303,7 @@ class ProTableDelegate(QStyledItemDelegate):
     selectToggled = pyqtSignal(int, bool)
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # type: ignore
         self.chk_size = 18
         self.btn_width = 50
         self.btn_height = 22
@@ -1413,6 +1413,10 @@ class ProTableDelegate(QStyledItemDelegate):
 
         elif col_type == 'stock':
             pass
+            
+        fg = index.data(Qt.ItemDataRole.ForegroundRole)
+        if fg:
+            text_color = fg.color()
 
         if is_hover:
              fill_color = fill_color.lighter(150)
