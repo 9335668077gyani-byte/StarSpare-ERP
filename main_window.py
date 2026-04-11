@@ -1,8 +1,66 @@
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                              QPushButton, QStackedWidget, QLabel, QFrame, QSizePolicy, QToolButton)
-from PyQt6.QtCore import Qt, QSize, QTimer
+from PyQt6.QtCore import Qt, QSize, QPropertyAnimation, QRect, QEasingCurve, QTimer, pyqtProperty, QPoint
+from PyQt6.QtGui import QIcon, QFont, QColor
 from styles import COLOR_BACKGROUND, COLOR_SURFACE, COLOR_ACCENT_CYAN
 from logger import app_logger
+
+class ToastNotification(QFrame):
+    def __init__(self, parent, message, duration=8000):
+        super().__init__(parent)
+        self.setStyleSheet(f"""
+            QFrame {{
+                background-color: {COLOR_SURFACE};
+                border: 1px solid #ff4444;
+                border-radius: 8px;
+            }}
+            QLabel {{
+                color: white;
+                font-size: 13px;
+                font-weight: bold;
+                border: none;
+            }}
+        """)
+        
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(15, 10, 15, 10)
+        lbl = QLabel(message)
+        layout.addWidget(lbl)
+        
+        # Calculate size based on text length roughly
+        self.resize(350, 50)
+        self.duration = duration
+        self.hide()
+
+    def show_toast(self):
+        parent_rect = self.parent().rect()
+        # Position bottom right
+        start_x = parent_rect.width()
+        end_x = parent_rect.width() - self.width() - 20
+        y = parent_rect.height() - self.height() - 20
+        
+        self.setGeometry(start_x, y, self.width(), self.height())
+        self.show()
+        self.raise_()
+        
+        self.anim = QPropertyAnimation(self, b"pos")
+        self.anim.setDuration(500)
+        self.anim.setStartValue(self.pos())
+        self.anim.setEndValue(QPoint(end_x, y))
+        self.anim.setEasingCurve(QEasingCurve.Type.OutBounce)
+        self.anim.start()
+        
+        QTimer.singleShot(self.duration, self.hide_toast)
+
+    def hide_toast(self):
+        end_x = self.parent().rect().width()
+        y = self.y()
+        self.anim = QPropertyAnimation(self, b"pos")
+        self.anim.setDuration(500)
+        self.anim.setEndValue(QPoint(end_x, y))
+        self.anim.setEasingCurve(QEasingCurve.Type.InBack)
+        self.anim.finished.connect(self.hide)
+        self.anim.start()
 
 # Page modules are imported lazily in switch_page() for fast startup
 
@@ -62,6 +120,14 @@ class MainWindow(QMainWindow):
         self.setAutoFillBackground(True)
         
         self.setup_ui()
+        QTimer.singleShot(1000, self._check_low_stock_startup)
+
+    def _check_low_stock_startup(self):
+        stats = self.db_manager.get_dashboard_stats()
+        count = stats.get('low_stock_count', 0)
+        if count > 0:
+            toast = ToastNotification(self, f"⚠️ {count} parts below reorder level.\nCheck Critical Alerts on Dashboard.")
+            toast.show_toast()
 
     def setup_ui(self):
         main_widget = QWidget()

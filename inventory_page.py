@@ -176,18 +176,18 @@ class BladeDelegate(QStyledItemDelegate):
                 
         # 2. PROGRESS BAR (Col Stock)
         elif col_type == 'stock':
-            val = int(data.get('val', 0))
-            max_val = int(data.get('max_val', 100))
-            ratio = min(1.0, val / max(1, max_val))
+            val = float(data.get('val', 0))
+            max_val = float(data.get('max_val', 100))
+            ratio = min(1.0, val / max(1.0, max_val))
             
             # ── Cell-fill: the background IS the bar ─────────────────────
             # The filled portion of the cell is color-washed; the rest stays dark.
             # Zero glow bleed, zero visual competition with adjacent columns.
 
-            if val <= 3:
+            if val <= 3.0:
                 r, g, b = 255, 60, 60
                 pulse = int(15 + 12 * abs((self.pulse_frame % 40) - 20) / 20.0)
-            elif val <= 8:
+            elif val <= 8.0:
                 r, g, b = 255, 160, 0
                 pulse = 18
             else:
@@ -222,7 +222,9 @@ class BladeDelegate(QStyledItemDelegate):
             nf = QFont("Segoe UI", 9)
             nf.setBold(True)
             painter.setFont(nf)
-            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, str(val))
+            
+            val_str = f"{round(val, 3):g}"
+            painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, val_str)
 
 
 
@@ -1594,11 +1596,43 @@ class InventoryPage(QWidget):
             
             cols = [
                 "Part ID", "Name", "Description", "MRP (Unit Price)", "Stock Qty", 
-                "Rack", "Column", "Reorder Level", "Vendor", "Compatibility", 
+                "Rack", "Column", "Reorder Level", "Vendor", "Vendor Discount %", "Discounted MRP", "Compatibility", 
                 "Category", "Added Date", "Last Ordered", "Added By", 
                 "Last Edited", "HSN Code", "GST Rate %", "Last Cost"
             ]
-            df = pd.DataFrame(self.all_rows, columns=cols)
+            
+            # Enrich rows with Vendor Discount on the fly for the report
+            enriched_rows = []
+            vendor_discounts = {}
+            
+            for r in self.all_rows:
+                r_list = list(r)
+                # Ensure row has at least 18 fields to prevent index errors
+                while len(r_list) <= 18:
+                    r_list.append("")
+                    
+                vendor_name = r_list[8]
+                discount = 0.0
+                if vendor_name and vendor_name != "N/A":
+                    # Cache DB queries per vendor to speed up export
+                    if vendor_name not in vendor_discounts:
+                        v_det = self.db_manager.get_vendor_details(vendor_name)
+                        vendor_discounts[vendor_name] = float(v_det[7]) if (v_det and len(v_det) > 7) else 0.0
+                    discount = vendor_discounts[vendor_name]
+                
+                mrp = float(r_list[3] or 0.0)
+                discounted_mrp = mrp * (1 - (discount / 100.0))
+                
+                # Reconstruct row matching the exact new column definition
+                new_row = [
+                    r_list[0], r_list[1], r_list[2], mrp, float(r_list[4] or 0),
+                    r_list[5], r_list[6], r_list[7], vendor_name, discount, discounted_mrp, r_list[9],
+                    r_list[10], r_list[11], r_list[12], r_list[13],
+                    r_list[14], r_list[15], r_list[16], r_list[17]
+                ]
+                enriched_rows.append(new_row)
+
+            df = pd.DataFrame(enriched_rows, columns=cols)
             df.to_excel(path, index=False)
             ProMessageBox.information(self, "Success", f"Exported successfully to:\n{path}")
         except Exception as e:

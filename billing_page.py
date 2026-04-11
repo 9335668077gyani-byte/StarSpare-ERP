@@ -27,9 +27,11 @@ import os
 class PaymentDialog(QDialog):
     """Collect Cash / UPI payment with live due auto-calculation."""
 
-    def __init__(self, grand_total: float, invoice_id: str, parent=None):
+    def __init__(self, grand_total: float, invoice_id: str, parent=None, previously_paid: float = 0.0):
         super().__init__(parent)
         self.grand_total = grand_total
+        self.previously_paid = previously_paid
+        self.target_amount = max(0.0, grand_total - previously_paid)
         self.invoice_id  = invoice_id
         self._result     = None   # (cash, upi, due, mode)
 
@@ -50,12 +52,21 @@ class PaymentDialog(QDialog):
         hdr.setStyleSheet(ui_theme.get_page_title_style())
         layout.addWidget(hdr)
 
-        total_lbl = QLabel(f"₹ {grand_total:,.2f}")
-        total_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        total_lbl.setStyleSheet(
-            "color: #00ff88; font-size: 34px; font-weight: 900;"
-            " font-family: 'Segoe UI'; border: none; background: transparent;"
-        )
+        if self.previously_paid > 0:
+            total_lbl = QLabel(f"Invoice Total: ₹ {grand_total:,.2f}\nPaid Earlier: ₹ {self.previously_paid:,.2f}\n\nRemaining: ₹ {self.target_amount:,.2f}")
+            total_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            total_lbl.setStyleSheet(
+                "color: #00ff88; font-size: 20px; font-weight: 900;"
+                " font-family: 'Segoe UI'; border: none; background: transparent;"
+            )
+        else:
+            total_lbl = QLabel(f"₹ {grand_total:,.2f}")
+            total_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            total_lbl.setStyleSheet(
+                "color: #00ff88; font-size: 34px; font-weight: 900;"
+                " font-family: 'Segoe UI'; border: none; background: transparent;"
+            )
+            
         layout.addWidget(total_lbl)
 
         sep = QFrame()
@@ -77,7 +88,7 @@ class PaymentDialog(QDialog):
 
         def make_spin(color):
             s = SelectableDoubleSpinBox()
-            s.setRange(0.0, grand_total)
+            s.setRange(0.0, self.target_amount)
             s.setDecimals(2)
             s.setPrefix("₹ ")
             s.setFixedHeight(42)
@@ -119,9 +130,9 @@ class PaymentDialog(QDialog):
         quick_row = QHBoxLayout()
         quick_row.setSpacing(10)
         for label, cash, upi in [
-            ("💵 Full Cash",  grand_total, 0.0),
-            ("📱 Full UPI",   0.0, grand_total),
-            ("⚡ Split 50/50", grand_total / 2, grand_total / 2),
+            ("💵 Full Cash",  self.target_amount, 0.0),
+            ("📱 Full UPI",   0.0, self.target_amount),
+            ("⚡ Split 50/50", self.target_amount / 2, self.target_amount / 2),
         ]:
             btn = QPushButton(label)
             btn.setFixedHeight(34)
@@ -153,7 +164,7 @@ class PaymentDialog(QDialog):
         layout.addWidget(self.btn_confirm)
 
         # Initialise with full cash
-        self._quick_set(grand_total, 0.0)
+        self._quick_set(self.target_amount, 0.0)
 
     # ── helpers ─────────────────────────────────────────────────────
     def _quick_set(self, cash, upi):
@@ -165,45 +176,38 @@ class PaymentDialog(QDialog):
         self.spin_upi.blockSignals(False)
         self._recalculate()
 
-    def _on_cash_changed(self, value):
+    def _on_cash_changed(self, val):
         self.spin_upi.blockSignals(True)
-        self.spin_upi.setValue(max(0.0, self.grand_total - value))
+        self.spin_upi.setValue(max(0.0, self.target_amount - val))
         self.spin_upi.blockSignals(False)
         self._recalculate()
 
     def _recalculate(self):
-        cash = self.spin_cash.value()
-        upi  = self.spin_upi.value()
-        due  = max(0.0, self.grand_total - cash - upi)
+        c = self.spin_cash.value()
+        u = self.spin_upi.value()
+        due = max(0.0, self.target_amount - c - u)
+        
         if due > 0:
-            self.lbl_due.setText(f"⚠️  Balance Due:  ₹ {due:,.2f}")
-            self.lbl_due.setStyleSheet(
-                "color: #ff6b35; font-size: 13px; font-weight: bold;"
-                " padding: 8px; border-radius: 6px;"
-                " background: rgba(255,100,0,0.12); border: 1px solid #ff6b3560;"
-            )
+            self.lbl_due.setStyleSheet("color: #ff4444; font-size: 13px; font-weight: bold; padding: 8px; border-radius: 6px; background: rgba(255,68,68,0.1);")
+            self.lbl_due.setText(f"Balance Due:  ₹ {due:,.2f}")
         else:
-            self.lbl_due.setText("✅  Fully Paid")
-            self.lbl_due.setStyleSheet(
-                "color: #00ff88; font-size: 13px; font-weight: bold;"
-                " padding: 8px; border-radius: 6px;"
-                " background: rgba(0,255,136,0.08); border: 1px solid #00ff8840;"
-            )
+            self.lbl_due.setStyleSheet("color: #00ff88; font-size: 13px; font-weight: bold; padding: 8px; border-radius: 6px; background: rgba(0,255,136,0.1);")
+            self.lbl_due.setText("✅ Target Paid")
 
     def _confirm(self):
-        cash = self.spin_cash.value()
-        upi  = self.spin_upi.value()
-        due  = max(0.0, self.grand_total - cash - upi)
-        # Determine mode label
-        if cash > 0 and upi > 0:
-            mode = "SPLIT"
-        elif upi > 0:
-            mode = "UPI"
-        else:
-            mode = "CASH"
+        c = self.spin_cash.value()
+        u = self.spin_upi.value()
+        due = max(0.0, self.target_amount - c - u)
+        
+        if c > 0 and u > 0: mode = "SPLIT"
+        elif u > 0: mode = "UPI"
+        elif c > 0: mode = "CASH"
+        else: mode = "DUE"
+        
         if due > 0:
-            mode = "PARTIAL" if (cash + upi) > 0 else "DUE"
-        self._result = (cash, upi, due, mode)
+            mode = "PARTIAL" if (c + u) > 0 else "DUE"
+
+        self._result = (c, u, due, mode)
         self.accept()
 
     def get_result(self):
@@ -624,6 +628,8 @@ class BillingPage(QWidget):
             }}
         """)
         self.search_bar.setCompleter(self.completer)
+        # When user selects a suggestion (arrow + Enter or click), add to cart immediately
+        self.completer.activated.connect(self._on_completer_activated)
 
     def update_completer(self):
         try:
@@ -646,6 +652,11 @@ class BillingPage(QWidget):
             app_logger.error(f"Error updating completer: {e}")
 
     def add_to_cart_from_search(self):
+        # Guard: skip if completer already handled this Enter press
+        if getattr(self, '_completer_handled', False):
+            self._completer_handled = False
+            return
+
         text = self.search_bar.text().strip()
         if not text: return
         
@@ -669,6 +680,30 @@ class BillingPage(QWidget):
             app_logger.error(f"Error adding to cart from search: {e}")
             self.search_bar.selectAll()
 
+    def _on_completer_activated(self, text):
+        """Called when user selects a suggestion from the dropdown (arrow+Enter or click).
+        Sets guard flag to prevent returnPressed from double-adding."""
+        self._completer_handled = True
+        # Parse and add directly from the activated text
+        if "(" in text and text.endswith(")"):
+            part_id = text.split("(")[-1].strip(")")
+        else:
+            part_id = text
+        try:
+            part = self.db_manager.get_part_by_id(part_id)
+            if part:
+                self.add_item_to_cart(part)
+                # Defer clear — QCompleter re-fills the bar AFTER this signal returns
+                from PyQt6.QtCore import QTimer
+                QTimer.singleShot(0, self._clear_search_bar)
+        except Exception as e:
+            app_logger.error(f"Error in completer activation: {e}")
+
+    def _clear_search_bar(self):
+        """Deferred clear for search bar after completer insertion."""
+        self.search_bar.clear()
+        self.search_bar.setFocus()
+
     def add_item_to_cart(self, part):
         db_stock = part[4]
         
@@ -684,38 +719,73 @@ class BillingPage(QWidget):
              ProMessageBox.warning(self, "Out of Stock", f"Only {db_stock} items available!")
              return
 
-        if found_item:
-            # DUPLICATE DETECTED - Ask for confirmation
-            msg = f"'{part[1]}' is already in cart (Qty: {found_item['qty']})\n\nAdd 1 more?"
-            if ProMessageBox.question(self, "⚠️ Already in Cart", msg):
-                found_item['qty'] += 1
+        # Prompt for Quantity
+        dialog = ProDialog(self, title="ENTER QUANTITY", width=300, height=180)
+        lbl = QLabel(f"Quantity to Add for:\n{part[1]}")
+        lbl.setStyleSheet(ui_theme.get_page_title_style())
+        lbl.setWordWrap(True)
+        dialog.set_content(lbl)
+        
+        qty_in = QLineEdit("1")
+        qty_in.setStyleSheet(ui_theme.get_lineedit_style())
+        qty_in.setValidator(QDoubleValidator(0.01, float(db_stock), 3))
+        qty_in.setFocus()
+        # auto select text to allow quick overwrite
+        QTimer.singleShot(10, qty_in.selectAll)
+        dialog.set_content(qty_in)
+        
+        qty_in.returnPressed.connect(dialog.accept)
+        
+        btn_layout = QHBoxLayout()
+        btn_save = QPushButton("ADD")
+        btn_save.setStyleSheet(ui_theme.get_primary_button_style())
+        btn_save.clicked.connect(dialog.accept)
+        btn_layout.addWidget(btn_save)
+        
+        dialog.add_buttons(btn_layout)
+        
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                entered_qty = float(qty_in.text())
+            except ValueError:
+                return
+                
+            if entered_qty <= 0:
+                return
+                
+            if current_cart_qty + entered_qty > db_stock:
+                ProMessageBox.warning(self, "Invalid", f"Max total stock available is {db_stock}")
+                return
+                
+            if found_item:
+                found_item['qty'] += entered_qty
                 found_item['total'] = found_item['qty'] * found_item['price']
                 found_item['db_stock'] = db_stock
                 self.refresh_cart()
-        else:
-            hsn_code = str(part[15]).strip() if len(part) > 15 and part[15] else 'N/A'
-            gst_rate = float(part[16]) if len(part) > 16 and part[16] else 18.0
-            
-            # Hybrid HSN Engine Fallback (v2.1)
-            if not hsn_code or hsn_code == 'N/A':
-                rule = self.db_manager.search_hsn_rule(part[1])
-                if rule:
-                    hsn_code = rule['hsn_code']
-                    gst_rate = rule['gst_rate']
+            else:
+                hsn_code = str(part[15]).strip() if len(part) > 15 and part[15] else 'N/A'
+                gst_rate = float(part[16]) if len(part) > 16 and part[16] else 18.0
+                
+                # Hybrid HSN Engine Fallback (v2.1)
+                if not hsn_code or hsn_code == 'N/A':
+                    rule = self.db_manager.search_hsn_rule(part[1])
+                    if rule:
+                        hsn_code = rule['hsn_code']
+                        gst_rate = rule['gst_rate']
 
-            self.cart_items.append({
-                'sys_id': part[0],
-                'name': part[1],
-                'price': part[3],
-                'db_stock': db_stock,
-                'qty': 1,
-                'total': part[3],
-                'hsn_code': hsn_code,
-                'gst_rate': gst_rate
-            })
-            # FLASH EFFECT for new item added! (Fast cyan flash for high-speed feedback)
-            FlashEffect.flash(self.cart_table, "#00e5ff", 1)
-            self.refresh_cart()
+                self.cart_items.append({
+                    'sys_id': part[0],
+                    'name': part[1],
+                    'price': part[3],
+                    'db_stock': db_stock,
+                    'qty': entered_qty,
+                    'total': part[3] * entered_qty,
+                    'hsn_code': hsn_code,
+                    'gst_rate': gst_rate
+                })
+                # FLASH EFFECT for new item added! (Fast cyan flash for high-speed feedback)
+                FlashEffect.flash(self.cart_table, "#00e5ff", 1)
+                self.refresh_cart()
         
     def remove_cart_item(self, index):
         if 0 <= index < len(self.cart_items):
@@ -794,7 +864,8 @@ class BillingPage(QWidget):
             # REMAINING STOCK Cell — shows how many more can be added (db_stock - in_cart)
             db_stock = item.get('db_stock', 0)
             remaining = max(0, db_stock - item['qty'])
-            stock_item = create_item(str(remaining))
+            remaining_str = f"{round(remaining, 3):g}"
+            stock_item = create_item(remaining_str)
             if remaining == 0:
                 stock_item.setForeground(QBrush(QColor("#ff2222")))
                 stock_item.setText("SOLD OUT")
@@ -1111,23 +1182,25 @@ class BillingPage(QWidget):
             grand_total -= bill_savings
 
         if grand_total < 0: grand_total = 0
+        
+        exact_grand_total = grand_total
 
         # Synchronize back-end DB total exactly with printing rounding requirement
         # This completely resolves the "rounding off" payment discrepancy.
         grand_total = round(grand_total)
 
         # 3. Reverse Tax Extraction (per-item, proportional to final grand_total)
-        # Each item gets a pro-rata slice of grand_total so that sum(per-item-final) == grand_total
+        # Each item gets a pro-rata slice of exact_grand_total so that sum(per-item-final) == exact_grand_total
         self.tax_details = []
         pre_bill_total = sum(item['total'] for item in self.cart_items)  # cart before bill discount
 
         for item in self.cart_items:
-            # Pro-rata share of final grand_total for this item
+            # Pro-rata share of exact grand_total for this item to avoid fractional .91/.98 visual artifacts
             if pre_bill_total > 0:
                 item_share = item['total'] / pre_bill_total
             else:
                 item_share = 1.0 / max(len(self.cart_items), 1)
-            final_item_total = grand_total * item_share  # exact proportional amount
+            final_item_total = exact_grand_total * item_share  # exact proportional amount
 
             try:
                 gst_rate = float(item.get('gst_rate', 18.0))
@@ -1152,7 +1225,8 @@ class BillingPage(QWidget):
                 '_final_total': final_item_total,
             })
 
-        taxable_base_value = grand_total - total_gst
+        taxable_base_value = exact_grand_total - total_gst
+        self._exact_grand_total = exact_grand_total
 
         # --- ANIMATED UPDATES ---
         parts_count = len(self.cart_items)
@@ -1384,6 +1458,8 @@ class BillingPage(QWidget):
 
         self.editing_invoice_id = invoice_id
         self.editing_date_str = inv_details.get('date')
+        self.original_upi = float(inv_details.get('payment_upi', 0.0))
+        self.original_cash = float(inv_details.get('payment_cash', 0.0))
 
         # Change checkout button appearance for update mode
         self.btn_checkout.setText("⚠️ UPDATE INVOICE [F12]")
@@ -1466,14 +1542,39 @@ class BillingPage(QWidget):
 
         # ── STEP 1: Collect payment BEFORE touching the DB (fixes B2) ──────
         # This ensures no invoice is ever committed without known payment intent.
-        dlg = PaymentDialog(grand_total, inv_id, self)
-        cash, upi, due, mode = grand_total, 0.0, 0.0, "CASH"
-        if dlg.exec() == QDialog.DialogCode.Accepted:
-            if dlg.get_result():
-                cash, upi, due, mode = dlg.get_result()
+        already_paid = 0.0
+        if self.editing_invoice_id:
+            already_paid = getattr(self, 'original_cash', 0.0) + getattr(self, 'original_upi', 0.0)
+            
+        target = max(0.0, grand_total - already_paid)
+        delta_cash, delta_upi, delta_due = 0.0, 0.0, target
+        
+        if target > 0:
+            dlg = PaymentDialog(grand_total, inv_id, self, previously_paid=already_paid)
+            if dlg.exec() == QDialog.DialogCode.Accepted:
+                if dlg.get_result():
+                    delta_cash, delta_upi, delta_due, _ = dlg.get_result()
+            else:
+                # Cancelled → treat as fully-due (no stock committed yet, safe to abort)
+                delta_cash, delta_upi, delta_due = 0.0, 0.0, target
+
+        # Calculate final totals for the DB row
+        if self.editing_invoice_id:
+            cash = getattr(self, 'original_cash', 0.0) + delta_cash
+            upi = getattr(self, 'original_upi', 0.0) + delta_upi
+            due = max(0.0, grand_total - cash - upi)
+            if cash > 0 and upi > 0: mode = "SPLIT"
+            elif upi > 0: mode = "UPI"
+            elif cash > 0: mode = "CASH"
+            else: mode = "DUE"
+            if due > 0: mode = "PARTIAL" if (cash+upi)>0 else "DUE"
         else:
-            # Cancelled → treat as fully-due (no stock committed yet, safe to abort)
-            cash, upi, due, mode = 0.0, 0.0, grand_total, "DUE"
+            cash, upi, due = delta_cash, delta_upi, delta_due
+            if cash > 0 and upi > 0: mode = "SPLIT"
+            elif upi > 0: mode = "UPI"
+            elif cash > 0: mode = "CASH"
+            else: mode = "DUE"
+            if due > 0: mode = "PARTIAL" if (cash+upi)>0 else "DUE"
 
         # ── STEP 2: If editing, REVERT existing invoice stock impact ─────────
         if self.editing_invoice_id:
@@ -1492,6 +1593,18 @@ class BillingPage(QWidget):
         # Immediately write payment so the row is never in an ambiguous state
         self.db_manager.update_invoice_payment(inv_id, cash, upi, due, mode)
         app_logger.info(f"Invoice saved+payment recorded: {inv_id} for {cust_name}")
+
+        # Log payment history to ensure math stays synced forever
+        if not self.editing_invoice_id:
+            if cash > 0: self.db_manager.log_payment(inv_id, cash, 'CASH')
+            if upi > 0: self.db_manager.log_payment(inv_id, upi, 'UPI')
+            if due > 0: self.db_manager.log_payment(inv_id, due, 'DUE PENDING')
+        else:
+            # We ONLY log the NEW deltas! NEVER clear history to preserve timestamps of old payments.
+            if delta_cash > 0: self.db_manager.log_payment(inv_id, delta_cash, 'CASH')
+            if delta_upi > 0: self.db_manager.log_payment(inv_id, delta_upi, 'UPI')
+            # Only record a new DUE entry if there is a leftover delta unpaid today.
+            if delta_due > 0: self.db_manager.log_payment(inv_id, delta_due, 'DUE PENDING')
 
         # ── STEP 4: Decrement stock — check every sell_part result (fixes B1/B4)
         sell_errors = []
@@ -1528,7 +1641,7 @@ class BillingPage(QWidget):
             tax_info = next((t for t in self.tax_details if t['id'] == i['sys_id']), {})
             final_item_total = tax_info.get('_final_total', 0.0)
             if final_item_total == 0.0 and pre_bill_total > 0:
-                final_item_total = grand_total * (i['total'] / pre_bill_total)
+                final_item_total = getattr(self, '_exact_grand_total', grand_total) * (i['total'] / pre_bill_total)
 
             raw_mrp = i.get('base_price', i['price'])
             qty     = i['qty']
@@ -1560,14 +1673,26 @@ class BillingPage(QWidget):
             "taxable_value": taxable_base_value,
             "gst_included": total_gst,
             "total": grand_total,
+            "exact_total": getattr(self, '_exact_grand_total', grand_total),
             "extra_details": extra_details,
             "customer_gstin": customer_gstin,
             "payment_cash": cash,
             "payment_upi":  upi,
             "payment_due":  due,
             "payment_mode": mode,
-            "_qr_amount":   due if due > 0 else grand_total,
         }
+
+        # Calculate delta for QR code and new payment block if editing
+        if self.editing_invoice_id and hasattr(self, 'original_upi'):
+            delta_upi = upi - self.original_upi
+            if delta_upi > 0:
+                inv_meta["_qr_amount"] = delta_upi
+            else:
+                inv_meta["_qr_amount"] = 0
+                
+            delta_cash = cash - getattr(self, 'original_cash', 0.0)
+            if delta_cash > 0:
+                inv_meta["_delta_cash"] = delta_cash
 
         try:
             pdf_path = self.pdf_generator.generate_invoice_pdf(inv_meta, pdf_items)

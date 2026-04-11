@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 from logger import app_logger
 
@@ -398,6 +399,9 @@ class ReportGenerator:
 
         styles = getSampleStyleSheet()
         
+        # Calculate overall dues for summary
+        total_due = sum(_safe_float(s[10]) for s in sales_data if len(s) > 10)
+
         # 1. TOP NOTCH SUMMARY BOX
         # Create a tiny table for the summary box to make it stand out
         summary_title_style = ParagraphStyle(
@@ -411,32 +415,35 @@ class ReportGenerator:
         summary_value_style = ParagraphStyle(
             "SummaryValue",
             parent=styles["Normal"],
-            fontSize=14,
+            fontSize=12,
             textColor=colors.white,
             alignment=1, # Center
             fontName="Helvetica-Bold",
         )
 
         summary_data = [
-            [Paragraph("TOTAL REVENUE", summary_title_style), 
-             Paragraph("TOTAL COGS", summary_title_style),
-             Paragraph("TOTAL EXPENSES", summary_title_style), 
-             Paragraph("NET PROFIT", summary_title_style)],
+            [Paragraph("REVENUE", summary_title_style), 
+             Paragraph("COGS", summary_title_style),
+             Paragraph("EXPENSES", summary_title_style), 
+             Paragraph("NET PROFIT", summary_title_style),
+             Paragraph("OVERALL DUES", summary_title_style)],
             [Paragraph(f"Rs. {total_revenue:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {total_cogs:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {total_expenses:,.2f}", summary_value_style), 
-             Paragraph(f"Rs. {total_net:,.2f}", summary_value_style)]
+             Paragraph(f"Rs. {total_net:,.2f}", summary_value_style),
+             Paragraph(f"Rs. {total_due:,.2f}", summary_value_style)]
         ]
         
         # Color profit based on value
         profit_color = HEADER_GREEN if total_net >= 0 else colors.red
         
-        summary_table = Table(summary_data, colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
+        summary_table = Table(summary_data, colWidths=[36*mm, 36*mm, 36*mm, 36*mm, 36*mm])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#007bff")), # Blue for Revenue
             ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#fd7e14")), # Orange for COGS
             ('BACKGROUND', (2, 0), (2, -1), colors.HexColor("#dc3545")), # Red for Expenses
             ('BACKGROUND', (3, 0), (3, -1), profit_color),              # Green/Red for Profit
+            ('BACKGROUND', (4, 0), (4, -1), colors.HexColor("#6f42c1")), # Purple for Dues
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -563,6 +570,9 @@ class ReportGenerator:
         net_profit = total_revenue - total_exp - total_cogs
         
         # TOP NOTCH SUMMARY BOX
+        # Calculate overall dues for summary
+        total_due = sum(_safe_float(s[10]) for s in sales_data if len(s) > 10)
+
         summary_title_style = ParagraphStyle(
             "SummaryTitle",
             parent=styles["Normal"],
@@ -574,31 +584,34 @@ class ReportGenerator:
         summary_value_style = ParagraphStyle(
             "SummaryValue",
             parent=styles["Normal"],
-            fontSize=14,
+            fontSize=12,
             textColor=colors.white,
             alignment=1,
             fontName="Helvetica-Bold",
         )
 
         summary_data = [
-            [Paragraph("TOTAL REVENUE", summary_title_style), 
-             Paragraph("TOTAL COGS", summary_title_style),
-             Paragraph("TOTAL EXPENSES", summary_title_style), 
-             Paragraph("NET PROFIT", summary_title_style)],
+            [Paragraph("REVENUE", summary_title_style), 
+             Paragraph("COGS", summary_title_style),
+             Paragraph("EXPENSES", summary_title_style), 
+             Paragraph("NET PROFIT", summary_title_style),
+             Paragraph("OVERALL DUES", summary_title_style)],
             [Paragraph(f"Rs. {total_revenue:,.2f}", summary_value_style), 
              Paragraph(f"Rs. {total_cogs:,.2f}", summary_value_style),
              Paragraph(f"Rs. {total_exp:,.2f}", summary_value_style), 
-             Paragraph(f"Rs. {net_profit:,.2f}", summary_value_style)]
+             Paragraph(f"Rs. {net_profit:,.2f}", summary_value_style),
+             Paragraph(f"Rs. {total_due:,.2f}", summary_value_style)]
         ]
         
         profit_color = HEADER_GREEN if net_profit >= 0 else colors.red
         
-        summary_table = Table(summary_data, colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
+        summary_table = Table(summary_data, colWidths=[36*mm, 36*mm, 36*mm, 36*mm, 36*mm])
         summary_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (0, -1), colors.HexColor("#007bff")), 
             ('BACKGROUND', (1, 0), (1, -1), colors.HexColor("#fd7e14")), 
             ('BACKGROUND', (2, 0), (2, -1), colors.HexColor("#dc3545")), 
             ('BACKGROUND', (3, 0), (3, -1), profit_color),              
+            ('BACKGROUND', (4, 0), (4, -1), colors.HexColor("#6f42c1")),
             ('TEXTCOLOR', (0, 0), (-1, -1), colors.white),
             ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
             ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
@@ -1343,14 +1356,17 @@ class ReportGenerator:
         elements = self._get_shop_header_elements(f"COMPREHENSIVE HISTORY  ({_clean(d_from)} to {_clean(d_to)})")
         styles = getSampleStyleSheet()
         
+        # Calculate overall dues for summary
+        total_due = sum(_safe_float(s[10]) for s in sales_data if len(s) > 10)
+
         # 1. SUMMARY BOX (The "Top Notch" part)
-        summary_title_style = ParagraphStyle("S1", parent=styles["Normal"], fontSize=11, textColor=colors.white, alignment=1, fontName="Helvetica-Bold")
-        summary_val_style = ParagraphStyle("S2", parent=styles["Normal"], fontSize=16, textColor=colors.white, alignment=1, fontName="Helvetica-Bold")
+        summary_title_style = ParagraphStyle("S1", parent=styles["Normal"], fontSize=10, textColor=colors.white, alignment=1, fontName="Helvetica-Bold")
+        summary_val_style = ParagraphStyle("S2", parent=styles["Normal"], fontSize=12, textColor=colors.white, alignment=1, fontName="Helvetica-Bold")
 
         sum_table = Table([
-            [Paragraph("REVENUE", summary_title_style), Paragraph("COGS", summary_title_style), Paragraph("EXPENSES", summary_title_style), Paragraph("NET PROFIT", summary_title_style)],
-            [Paragraph(f"Rs. {total_revenue:,.2f}", summary_val_style), Paragraph(f"Rs. {total_cogs:,.2f}", summary_val_style), Paragraph(f"Rs. {total_expenses:,.2f}", summary_val_style), Paragraph(f"Rs. {total_net:,.2f}", summary_val_style)]
-        ], colWidths=[45*mm, 45*mm, 45*mm, 45*mm])
+            [Paragraph("REVENUE", summary_title_style), Paragraph("COGS", summary_title_style), Paragraph("EXPENSES", summary_title_style), Paragraph("NET PROFIT", summary_title_style), Paragraph("OVERALL DUES", summary_title_style)],
+            [Paragraph(f"Rs. {total_revenue:,.2f}", summary_val_style), Paragraph(f"Rs. {total_cogs:,.2f}", summary_val_style), Paragraph(f"Rs. {total_expenses:,.2f}", summary_val_style), Paragraph(f"Rs. {total_net:,.2f}", summary_val_style), Paragraph(f"Rs. {total_due:,.2f}", summary_val_style)]
+        ], colWidths=[36*mm, 36*mm, 36*mm, 36*mm, 36*mm])
         
         p_color = HEADER_GREEN if total_net >= 0 else colors.red
         sum_table.setStyle(TableStyle([
@@ -1358,6 +1374,7 @@ class ReportGenerator:
             ('BACKGROUND', (1,0), (1,-1), colors.HexColor("#fd7e14")), # Orange
             ('BACKGROUND', (2,0), (2,-1), colors.HexColor("#dc3545")), # Red
             ('BACKGROUND', (3,0), (3,-1), p_color),
+            ('BACKGROUND', (4,0), (4,-1), colors.HexColor("#6f42c1")), # Purple
             ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
             ('BOTTOMPADDING', (0,0), (-1,-1), 12),
             ('TOPPADDING', (0,0), (-1,-1), 12),
@@ -1390,8 +1407,11 @@ class ReportGenerator:
             # --- Sales Section ---
             if data['sales']:
                 elements.append(Paragraph("🛒 Invoices", ParagraphStyle("SubH", parent=styles["Normal"], fontSize=10, fontName="Helvetica-Bold", textColor=HEADER_GREEN)))
-                s_headers = ["Inv", "Customer", "Code", "Item Name", "Qty", "MRP", "Disc", "ItemTot", "InvTot", "Mode"]
+                s_headers = ["Inv", "Customer", "Code", "Item Name", "Qty", "MRP", "Disc", "ItemTot", "InvTot", "Cash", "UPI", "Due"]
                 s_table_data = [s_headers]
+                
+                # Paragraph style for customer name wrapping
+                cust_style = ParagraphStyle("CustWrap", parent=styles["Normal"], fontSize=7, leading=9)
                 
                 for s in data['sales']:
                     has_return = int(s[7]) > 0 if len(s) > 7 and s[7] else False
@@ -1404,12 +1424,34 @@ class ReportGenerator:
                     if has_return:
                         inv_id_clean += "\n[REFUND]" if actual_revenue <= 0 else "\n[P.RET]"
                         
-                    cust_clean = _clean(s[2])[:20]
+                    cust_name = _clean(s[2])[:25]
+                    mobile  = _clean(s[13]) if len(s) > 13 and s[13] else ""
+                    vehicle = _clean(s[14]) if len(s) > 14 and s[14] else ""
+                    reg_no  = _clean(s[15]) if len(s) > 15 and s[15] else ""
                     
+                    details = []
+                    if mobile: details.append(f"<b>Ph:</b> {mobile}")
+                    if vehicle: details.append(f"<b>Veh:</b> {vehicle}")
+                    if reg_no: details.append(f"<b>Reg:</b> {reg_no}")
+                    
+                    if details:
+                        cust_clean = f"<b>{cust_name}</b><br/>" + "<br/>".join(details)
+                    else:
+                        cust_clean = f"<b>{cust_name}</b>"
+
                     if refund_amt > 0:
                         inv_total = f"{actual_revenue:,.2f}\n(-{refund_amt:g})"
                     else:
                         inv_total = f"{actual_revenue:,.2f}"
+                    
+                    # Extract payment breakdown for this invoice
+                    pay_cash = _safe_float(s[8]) if len(s) > 8 else amt
+                    pay_upi  = _safe_float(s[9]) if len(s) > 9 else 0.0
+                    pay_due  = _safe_float(s[10]) if len(s) > 10 else 0.0
+                    
+                    cash_str = f"{pay_cash:,.0f}" if pay_cash > 0 else "-"
+                    upi_str  = f"{pay_upi:,.0f}" if pay_upi > 0 else "-"
+                    due_str  = f"{pay_due:,.0f}" if pay_due > 0 else "-"
                     
                     try:
                         import json
@@ -1423,14 +1465,7 @@ class ReportGenerator:
                         parts_list = [p for p in parts_list if isinstance(p, dict)]
                         
                         if not parts_list:
-                            pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
-                            pay_mode = pay_mode_raw
-                            if pay_mode_raw == "SPLIT":
-                                p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
-                                p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
-                                pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
-                                
-                            s_table_data.append([inv_id_clean, cust_clean, "-", "-", "-", "-", "-", "-", inv_total, pay_mode])
+                            s_table_data.append([inv_id_clean, Paragraph(cust_clean, cust_style), "-", "-", "-", "-", "-", "-", inv_total, cash_str, upi_str, due_str])
                             continue
                             
                         # Add a row for EACH part!
@@ -1456,41 +1491,32 @@ class ReportGenerator:
                             
                             # Only show Invoice details on the first row of that invoice group
                             row_inv = inv_id_clean if i == 0 else ""
-                            row_cust = cust_clean if i == 0 else ""
+                            row_cust = Paragraph(cust_clean, cust_style) if i == 0 else ""
                             row_tot = inv_total if i == 0 else ""
-                            
-                            pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
-                            pay_mode = pay_mode_raw
-                            if pay_mode_raw == "SPLIT":
-                                p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
-                                p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
-                                pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
-                            
-                            row_mode = pay_mode if i == 0 else ""
+                            row_cash = cash_str if i == 0 else ""
+                            row_upi  = upi_str if i == 0 else ""
+                            row_due  = due_str if i == 0 else ""
                             
                             s_table_data.append([
                                 row_inv, 
                                 row_cust, 
                                 Paragraph(part_code, item_style), 
                                 Paragraph(part_name, item_style), 
-                                qty, mrp_str, disc_str, item_tot_str, row_tot, row_mode
+                                qty, mrp_str, disc_str, item_tot_str, row_tot, row_cash, row_upi, row_due
                             ])
                             
                     except Exception as e:
-                        pay_mode_raw = str(s[11]) if len(s) > 11 else "CASH"
-                        pay_mode = pay_mode_raw
-                        if pay_mode_raw == "SPLIT":
-                            p_upi = float(s[9]) if len(s) > 9 and s[9] else 0.0
-                            p_cash = float(s[8]) if len(s) > 8 and s[8] else 0.0
-                            pay_mode = f"SPLIT\n(C:{p_cash:g}|U:{p_upi:g})"
-                                
-                        s_table_data.append([inv_id_clean, cust_clean, "-", "Error parsing items", "-", "-", "-", "-", inv_total, pay_mode])
+                        s_table_data.append([inv_id_clean, Paragraph(cust_clean, cust_style), "-", "Error parsing items", "-", "-", "-", "-", inv_total, cash_str, upi_str, due_str])
                 
-                st = Table(s_table_data, colWidths=[12*mm, 20*mm, 18*mm, 36*mm, 8*mm, 12*mm, 10*mm, 16*mm, 16*mm, 32*mm])
+                # A4 portrait usable ~186mm: 10+24+21+28+8+11+9+15+15+15+15+15 = 186mm
+                st = Table(s_table_data, colWidths=[10*mm, 24*mm, 21*mm, 28*mm, 8*mm, 11*mm, 9*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm])
                 st.setStyle(_make_table_style(HEADER_GREEN, [
-                    ('ALIGN', (4, 0), (9, -1), 'CENTER'), # Qty to Mode centered
-                    ('ALIGN', (7, 0), (8, -1), 'RIGHT'),  # Item Tot and Inv Tot aligned right
-                    ('FONTSIZE', (0, 0), (-1, -1), 8)
+                    ('ALIGN', (4, 0), (11, -1), 'CENTER'),  # Qty to Due centered
+                    ('ALIGN', (7, 0), (8, -1), 'RIGHT'),    # ItemTot and InvTot right-aligned
+                    ('ALIGN', (9, 0), (11, -1), 'RIGHT'),   # Cash, UPI, Due right-aligned
+                    ('FONTSIZE', (0, 0), (-1, -1), 7),
+                    # Highlight Due column header with orange tint
+                    ('BACKGROUND', (11, 0), (11, 0), colors.HexColor("#e65100")),
                 ]))
                 elements.append(st)
                 elements.append(Spacer(1, 4 * mm))
@@ -1637,3 +1663,118 @@ class ReportGenerator:
         except Exception as e:
             app_logger.error(f"Failed to generate Vendor Statement PDF: {e}")
             return False, str(e)
+
+def generate_customer_statement_pdf(customer_name, ledger_data, summary):
+    """
+    Standalone function to generate a customer ledger statement PDF.
+    Similar styling to vendor statements but tailored for customer dues.
+    """
+    if not REPORTLAB_AVAILABLE:
+        return False, "ReportLab not installed"
+        
+    try:
+        from database_manager import DatabaseManager
+        import db_config
+        db = DatabaseManager(db_config.get_db_path())
+        rg = ReportGenerator(db)
+        
+        file_path = os.path.join(
+            "reports",
+            f"Customer_Statement_{_clean(customer_name)}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+        )
+
+        doc = SimpleDocTemplate(
+            file_path,
+            pagesize=A4,
+            rightMargin=15 * mm, leftMargin=15 * mm,
+            topMargin=15 * mm, bottomMargin=15 * mm,
+        )
+        
+        elements = rg._get_shop_header_elements("CUSTOMER STATEMENT")
+        styles = getSampleStyleSheet()
+        
+        elements.append(Paragraph(
+            f"<b>Customer:</b> {_clean(customer_name)}",
+            ParagraphStyle("SubInfo", parent=styles["Normal"], fontSize=11, textColor=colors.HexColor("#333333"), alignment=1)
+        ))
+        elements.append(Spacer(1, 8 * mm))
+        
+        # Summary Area
+        summary_data = [
+            [
+                Paragraph("<font color='white'><b>TOTAL BILLED</b></font>", styles["Normal"]),
+                Paragraph("<font color='white'><b>TOTAL PAID</b></font>", styles["Normal"]),
+                Paragraph("<font color='white'><b>OUTSTANDING DUE</b></font>", styles["Normal"])
+            ],
+            [
+                f"Rs. {summary.get('billed', 0):,.2f}",
+                f"Rs. {summary.get('paid', 0):,.2f}",
+                f"Rs. {summary.get('due', 0):,.2f}"
+            ]
+        ]
+        
+        t_sum = Table(summary_data, colWidths=[60*mm, 60*mm, 60*mm])
+        t_sum.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#00bcd4")),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('FONTNAME', (0,1), (-1,-1), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,1), (-1,-1), 14),
+            ('BOTTOMPADDING', (0,0), (-1,-1), 8),
+            ('TOPPADDING', (0,0), (-1,-1), 8),
+            ('GRID', (0,0), (-1,-1), 1, colors.white),
+            ('BACKGROUND', (2,0), (2,0), colors.HexColor("#ff4444")), # Highlight due header
+            ('TEXTCOLOR', (2,1), (2,1), colors.HexColor("#ff4444")), # Highlight due value explicitly
+        ]))
+        elements.append(t_sum)
+        elements.append(Spacer(1, 10 * mm))
+        
+        # Table
+        data = [["Date", "Invoice ID", "Total Amount", "Amount Paid", "Pending Due", "Status"]]
+        
+        for row in ledger_data:
+            date, inv_id, tot, paid, due, status = row
+            status_para = status
+            if status == "DUE":
+                status_para = Paragraph(f"<font color='red'><b>{status}</b></font>", styles["Normal"])
+            
+            data.append([
+                date.split()[0],
+                inv_id,
+                f"{tot:,.2f}",
+                f"{paid:,.2f}",
+                f"{due:,.2f}",
+                status_para
+            ])
+            
+        t_main = Table(data, colWidths=[30*mm, 45*mm, 25*mm, 25*mm, 25*mm, 25*mm], repeatRows=1)
+        
+        ts = TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), colors.HexColor("#1e1e1e")),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('ALIGN', (0,0), (-1,0), 'CENTER'),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0,0), (-1,0), 6),
+            ('TOPPADDING', (0,0), (-1,0), 6),
+            ('ALIGN', (2,1), (4,-1), 'RIGHT'),
+            ('ALIGN', (5,1), (5,-1), 'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor("#cccccc")),
+        ])
+        
+        # Add alternating row colors
+        for i in range(1, len(data)):
+            if i % 2 == 0:
+                ts.add('BACKGROUND', (0,i), (-1,i), colors.HexColor("#f8f9fa"))
+                
+        t_main.setStyle(ts)
+        elements.append(t_main)
+        
+        doc.build(elements)
+        
+        if sys.platform == "win32":
+            os.startfile(file_path)
+        return True, file_path
+    except Exception as e:
+        app_logger.error(f"Failed to generate customer statement: {e}")
+        return False, str(e)
+

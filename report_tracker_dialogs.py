@@ -318,6 +318,25 @@ def _open_pdf_for_id(invoice_id, parent):
     try:
         from path_utils import get_app_data_path  # type: ignore
         pdf_path = os.path.join(get_app_data_path("invoices"), f"{invoice_id}.pdf")
+        
+        # ALWAYS regenerate from DB source-of-truth before opening
+        try:
+            db_mgr = getattr(parent, 'db', None) or getattr(parent, 'db_manager', None)
+            if not db_mgr:
+                from database_manager import DatabaseManager
+                import db_config
+                db_mgr = DatabaseManager(db_config.get_db_path())
+            from invoice_generator import InvoiceGenerator
+            ig = InvoiceGenerator(db_mgr)
+            ig.regenerate_invoice(invoice_id)
+        except PermissionError:
+            from custom_components import ProMessageBox
+            ProMessageBox.warning(parent, "PDF Locked", "The PDF is currently open in your browser.\nPlease close the browser tab displaying the invoice first, then click 'View' again so the app can rewrite it.")
+            return
+        except Exception as e:
+            import logging
+            logging.getLogger("app").error(f"Error regenerating PDF before view: {e}")
+
         if os.path.exists(pdf_path):
             os.startfile(pdf_path)
         else:
@@ -411,6 +430,7 @@ class InvoiceTrackerDialog(QDialog):
         root.addWidget(tabs)
         tabs.addTab(self._build_overview(),  "📋  OVERVIEW")
         tabs.addTab(self._build_items(),     "🛒  ITEMS")
+        tabs.addTab(self._build_history(),   "💳  PAYMENTS")
         tabs.addTab(self._build_returns(),   "↩️  RETURNS")
 
         # Footer with PDF button
@@ -604,6 +624,51 @@ class InvoiceTrackerDialog(QDialog):
                 ("LABOUR / SVC", f"₹ {labour_total:,.2f}",    "#a78bfa"),
                 ("GRAND TOTAL",  f"₹ {total_amt:,.2f}",       COLOR_ACCENT_YELLOW),
             ]))
+        return w
+
+    # ── Payment History tab ───────────────────────────────────────────────────
+    def _build_history(self):
+        w = QWidget()
+        layout = QVBoxLayout(w)
+        layout.setContentsMargins(16, 12, 16, 12)
+        layout.setSpacing(10)
+
+        history_records = []
+        if hasattr(self.db, 'get_payment_history'):
+            history_records = self.db.get_payment_history(self.inv_id)
+
+        t = _styled_table(["DATETIME", "PAYMENT MODE", "AMOUNT"])
+        t.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        t.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        t.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+
+        if history_records:
+            t.setRowCount(len(history_records))
+            for i, rec in enumerate(history_records):
+                dt = str(rec[0])
+                amt = float(rec[1])
+                mode = str(rec[2]).upper()
+
+                if mode == "UPI":
+                    m_col = COLOR_ACCENT_GREEN
+                elif mode == "CASH":
+                    m_col = COLOR_ACCENT_CYAN
+                elif "DUE" in mode:
+                    m_col = COLOR_ACCENT_RED
+                else:
+                    m_col = COLOR_ACCENT_YELLOW
+
+                t.setItem(i, 0, _ti(dt, "#ccc", Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter))
+                t.setItem(i, 1, _ti(mode, m_col, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter))
+                t.setItem(i, 2, _ti(f"₹ {amt:,.2f}", m_col, Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight))
+        else:
+            t.setRowCount(1)
+            item = _ti("No history logs available for this older invoice.", "#777")
+            item.setTextAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignCenter)
+            t.setItem(0, 0, item)
+            t.setSpan(0, 0, 1, 3)
+
+        layout.addWidget(t)
         return w
 
     # ── Returns tab ───────────────────────────────────────────────────────────

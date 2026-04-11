@@ -101,12 +101,17 @@ class VendorManagerWidget(QWidget):
         self.inp_notes.setPlaceholderText("Additional Notes")
         self.inp_notes.setStyleSheet(ui_theme.get_lineedit_style())
         
+        self.inp_discount = QLineEdit()
+        self.inp_discount.setPlaceholderText("Discount % (e.g. 10.5)")
+        self.inp_discount.setStyleSheet(ui_theme.get_lineedit_style())
+        
         self.form_layout.addRow("Name *", self.inp_name)
         self.form_layout.addRow("Rep Name", self.inp_rep)
         self.form_layout.addRow("Phone", self.inp_phone)
         self.form_layout.addRow("Address", self.inp_address)
         self.form_layout.addRow("GSTIN", self.inp_gstin)
         self.form_layout.addRow("Notes", self.inp_notes)
+        self.form_layout.addRow("Discount %", self.inp_discount)
         
         right_layout.addLayout(self.form_layout)
         right_layout.addStretch()
@@ -147,6 +152,7 @@ class VendorManagerWidget(QWidget):
             self.inp_address.setText(row[4])
             self.inp_gstin.setText(row[5])
             self.inp_notes.setText(row[6])
+            self.inp_discount.setText(str(row[7]) if len(row) > 7 else "0.0")
             self.btn_save.setText("UPDATE VENDOR")
             
     def clear_form(self):
@@ -157,6 +163,7 @@ class VendorManagerWidget(QWidget):
         self.inp_address.clear()
         self.inp_gstin.clear()
         self.inp_notes.clear()
+        self.inp_discount.clear()
         self.btn_save.setText("ADD VENDOR")
         self.table.clearSelection()
         
@@ -172,12 +179,18 @@ class VendorManagerWidget(QWidget):
         gstin = self.inp_gstin.text().strip()
         notes = self.inp_notes.text().strip()
         
+        try:
+            discount = float(self.inp_discount.text().strip()) if self.inp_discount.text().strip() else 0.0
+        except ValueError:
+            ProMessageBox.warning(self, "Validation Error", "Discount must be a valid number.")
+            return
+        
         if self.current_vendor_id:
             # Update
-            success, msg = self.db_manager.update_vendor(self.current_vendor_id, name, rep, phone, addr, gstin, notes)
+            success, msg = self.db_manager.update_vendor(self.current_vendor_id, name, rep, phone, addr, gstin, notes, discount)
         else:
             # Add
-            success, msg = self.db_manager.add_vendor(name, rep, phone, addr, gstin, notes)
+            success, msg = self.db_manager.add_vendor(name, rep, phone, addr, gstin, notes, discount)
             
         if success:
             self.load_vendors()

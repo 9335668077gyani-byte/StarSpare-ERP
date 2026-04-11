@@ -60,21 +60,21 @@ class ThemeCard(QFrame):
         super().__init__(parent)
         self.theme_name = theme_data["name"]
         self.on_select = on_select
-        self.setFixedSize(155, 100)
+        self.setFixedSize(180, 115)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self._update_style(is_selected)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 6, 8, 6)
-        layout.setSpacing(3)
+        layout.setContentsMargins(10, 10, 10, 10)
+        layout.setSpacing(6)
 
         # Color swatches row
         swatch_row = QHBoxLayout()
-        swatch_row.setSpacing(3)
+        swatch_row.setSpacing(4)
         for clr in theme_data["colors"]:
             sw = QFrame()
             sw.setFixedSize(28, 18)
-            sw.setStyleSheet(f"background-color: {clr}; border-radius: 3px; border: 1px solid rgba(255,255,255,0.2);")
+            sw.setStyleSheet(f"background-color: {clr}; border-radius: 4px; border: 1px solid rgba(255,255,255,0.2);")
             swatch_row.addWidget(sw)
         swatch_row.addStretch()
         layout.addLayout(swatch_row)
@@ -82,9 +82,9 @@ class ThemeCard(QFrame):
         # Icon + name
         name_row = QHBoxLayout()
         icon_lbl = QLabel(theme_data["icon"])
-        icon_lbl.setStyleSheet(ui_theme.get_page_title_style())
+        icon_lbl.setStyleSheet("font-size: 16px;")
         name_lbl = QLabel(theme_data["name"])
-        name_lbl.setStyleSheet(ui_theme.get_page_title_style())
+        name_lbl.setStyleSheet("font-weight: bold; color: white; font-size: 13px;")
         name_lbl.setWordWrap(True)
         name_row.addWidget(icon_lbl)
         name_row.addWidget(name_lbl)
@@ -93,7 +93,7 @@ class ThemeCard(QFrame):
 
         # Description
         desc_lbl = QLabel(theme_data["desc"])
-        desc_lbl.setStyleSheet(ui_theme.get_page_title_style())
+        desc_lbl.setStyleSheet("color: #a0a0a0; font-size: 11px;")
         desc_lbl.setWordWrap(True)
         layout.addWidget(desc_lbl)
 
@@ -420,8 +420,9 @@ class SettingsPage(QWidget):
 
         # Default GST Rate
         gst_col = QVBoxLayout()
+        gst_col.setAlignment(Qt.AlignmentFlag.AlignTop)
         gst_lbl = QLabel("Default GST Rate:")
-        gst_lbl.setStyleSheet("color: #aaa; font-weight: bold;")
+        gst_lbl.setStyleSheet("color: #aaa; font-weight: bold; margin-bottom: 5px;")
         self.combo_gst_rate = QComboBox()
         self.combo_gst_rate.addItems(["0%", "5%", "12%", "18%", "28%"])
         self.combo_gst_rate.setFixedHeight(38)
@@ -433,8 +434,9 @@ class SettingsPage(QWidget):
 
         # GST Mode
         mode_col = QVBoxLayout()
+        mode_col.setAlignment(Qt.AlignmentFlag.AlignTop)
         mode_lbl = QLabel("GST Mode:")
-        mode_lbl.setStyleSheet("color: #aaa; font-weight: bold;")
+        mode_lbl.setStyleSheet("color: #aaa; font-weight: bold; margin-bottom: 5px;")
         self.combo_gst_mode = QComboBox()
         self.combo_gst_mode.addItems(["CGST + SGST (Intra-State)", "IGST (Inter-State)"])
         self.combo_gst_mode.setFixedHeight(38)

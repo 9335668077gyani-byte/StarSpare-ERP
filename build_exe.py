@@ -52,6 +52,8 @@ PyInstaller.__main__.run([
     '--hidden-import=invoice_generator',
     '--hidden-import=report_generator',
     '--hidden-import=return_dialog',
+    '--hidden-import=part_tracker_dialog',
+    '--hidden-import=report_tracker_dialogs',
     '--hidden-import=custom_components',
     '--hidden-import=styles',
     '--hidden-import=ui_theme',

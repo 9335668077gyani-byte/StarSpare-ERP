@@ -284,68 +284,163 @@ class InvoiceGenerator:
         c.setLineWidth(1 if ACCENT_LINE else 0.5)
         c.line(MARGIN_L, div_y, MARGIN_R, div_y)
 
-        # ━━━━━ BILL TO & VEHICLE INFO (Text Only - Clean) ━━━━━━━━
-        y = div_y - 10 * mm
-        
-        # Column 1: Bill To
-        c.setFillColorRGB(*SECONDARY)
-        c.setFont(HEADER_FONT, 10)
-        c.drawString(MARGIN_L, y, "BILL TO")
-        
-        c.setFillColorRGB(0.1, 0.1, 0.1)
-        c.setFont(BODY_FONT, 11)
-        c.drawString(MARGIN_L, y - 6 * mm, inv_meta['customer'])
-        
-        c.setFont(BODY_FONT, 9)
-        c.setFillColorRGB(*GRAY)
-        c.drawString(MARGIN_L, y - 11 * mm, f"Mobile: {inv_meta['mobile']}")
-        
-        # Customer GSTIN display (v2.1)
-        if inv_meta.get('customer_gstin'):
-            c.setFont(BODY_FONT, 8)
-            c.drawString(MARGIN_L, y - 15 * mm, f"GSTIN: {inv_meta['customer_gstin']}")
-        
-        # Column 2: Vehicle Details
-        col2_x = W / 2 + 10 * mm
-        c.setFillColorRGB(*SECONDARY)
-        c.setFont(HEADER_FONT, 10)
-        c.drawString(col2_x, y, "VEHICLE DETAILS")
-        
-        c.setFillColorRGB(0.1, 0.1, 0.1)
-        c.setFont(BODY_FONT, 11)
-        c.drawString(col2_x, y - 6 * mm, inv_meta['vehicle'])
-        
-        c.setFont(BODY_FONT, 9)
-        c.setFillColorRGB(*GRAY)
-        c.drawString(col2_x, y - 11 * mm, f"Reg No: {inv_meta['reg_no']}")
-        
-        # Extra Fields
-        extra_y = y - 18 * mm
-        extra_details = inv_meta.get("extra_details", {})
+        # ━━━━━ BILL TO & VEHICLE INFO (Professional Boxed Layout) ━━━━━
+        y = div_y - 6 * mm
 
-        # ── Revised Invoice Badge ──────────────────────────────────────
+        # Layout: Two side-by-side boxes with a 4mm gap
+        box_gap   = 4 * mm
+        box_w     = (CONTENT_W - box_gap) / 2
+        box_h     = 30 * mm        # Standard height for both boxes
+        hdr_h     = 7 * mm         # Colored header band height
+        box1_x    = MARGIN_L
+        box2_x    = MARGIN_L + box_w + box_gap
+        box_top_y = y
+        box_bot_y = y - box_h
+
+        # Prepare extra details early to compute if extra row needed
+        extra_details = inv_meta.get("extra_details", {})
+        visible_extras = {k: v for k, v in extra_details.items() if not str(k).startswith('_') and v}
+
+        # If customer GSTIN exists, we need more vertical space
+        has_cust_gstin = bool(inv_meta.get('customer_gstin'))
+        if has_cust_gstin or len(visible_extras) > 0:
+            box_h += 5 * mm
+            box_bot_y = y - box_h
+
+        # ── Box backgrounds ──
+        BOX_BG = (0.98, 0.98, 1.0)   # Ultra-light tint
+        BORDER_C = (0.88, 0.88, 0.92)
+        if theme == "Executive (Black/Gold)":
+            BOX_BG = (0.99, 0.98, 0.95)
+            BORDER_C = (0.85, 0.85, 0.88)
+        elif theme == "Minimal (B&W)":
+            BOX_BG = (0.98, 0.98, 0.98)
+            BORDER_C = (0.85, 0.85, 0.85)
+
+        # ── Refined Modern Design: "Card Style" ──
+        # Box 1: BILL TO
+        c.setFillColorRGB(*BOX_BG)
+        c.roundRect(box1_x, box_bot_y, box_w, box_h, 2.5 * mm, fill=1, stroke=0)
+        # Outline
+        c.setStrokeColorRGB(*BORDER_C)
+        c.setLineWidth(0.5)
+        c.roundRect(box1_x, box_bot_y, box_w, box_h, 2.5 * mm, fill=0, stroke=1)
+        # Header Accent Line (Top edge)
+        c.setStrokeColorRGB(*BRAND)
+        c.setLineWidth(2)
+        c.line(box1_x + 2*mm, box_top_y, box1_x + box_w - 2*mm, box_top_y)
+        
+        # Header Text
+        c.setFillColorRGB(*BRAND)
+        c.setFont(HEADER_FONT, 9.5)
+        c.drawString(box1_x + 4 * mm, box_top_y - 5.5 * mm, "BILL TO")
+        
+        # Sub-header separator
+        c.setStrokeColorRGB(*BORDER_C)
+        c.setLineWidth(0.5)
+        c.line(box1_x, box_top_y - hdr_h, box1_x + box_w, box_top_y - hdr_h)
+
+
+        # Box 2: VEHICLE DETAILS
+        c.setFillColorRGB(*BOX_BG)
+        c.roundRect(box2_x, box_bot_y, box_w, box_h, 2.5 * mm, fill=1, stroke=0)
+        # Outline
+        c.setStrokeColorRGB(*BORDER_C)
+        c.setLineWidth(0.5)
+        c.roundRect(box2_x, box_bot_y, box_w, box_h, 2.5 * mm, fill=0, stroke=1)
+        # Header Accent Line (Top edge)
+        c.setStrokeColorRGB(*BRAND)
+        c.setLineWidth(2)
+        c.line(box2_x + 2*mm, box_top_y, box2_x + box_w - 2*mm, box_top_y)
+        
+        # Header Text
+        c.setFillColorRGB(*BRAND)
+        c.setFont(HEADER_FONT, 9.5)
+        c.drawString(box2_x + 4 * mm, box_top_y - 5.5 * mm, "VEHICLE DETAILS")
+        
+        # Sub-header separator
+        c.setStrokeColorRGB(*BORDER_C)
+        c.setLineWidth(0.5)
+        c.line(box2_x, box_top_y - hdr_h, box2_x + box_w, box_top_y - hdr_h)
+
+        # ── Box 1 Content: Customer Info ──
+        pad = 4 * mm
+        info_x = box1_x + pad
+        info_y = box_top_y - hdr_h - 5 * mm
+
+        # Customer Name (prominent)
+        c.setFillColorRGB(0.08, 0.08, 0.12)
+        c.setFont(HEADER_FONT, 11)
+        # Use Paragraph for auto-wrap on long names
+        cust_name_style = ParagraphStyle(name='CustName', fontName=HEADER_FONT, fontSize=11, leading=13)
+        cust_para = Paragraph(str(inv_meta['customer']), cust_name_style)
+        pw, ph = cust_para.wrapOn(c, box_w - 2 * pad, 20 * mm)
+        cust_para.drawOn(c, info_x, info_y - ph + 3 * mm)
+        info_y -= max(ph, 5 * mm) + 1 * mm
+
+        # Mobile
+        c.setFillColorRGB(*GRAY)
+        c.setFont(BODY_FONT, 9)
+        c.drawString(info_x, info_y, f"Mobile: {inv_meta['mobile']}")
+        info_y -= 4.5 * mm
+
+        # Customer GSTIN
+        if has_cust_gstin:
+            c.setFont(BODY_FONT, 8)
+            c.drawString(info_x, info_y, f"GSTIN: {inv_meta['customer_gstin']}")
+            info_y -= 4.5 * mm
+
+        # Extra field 1 (in Bill To box)
+        extras_list = list(visible_extras.items())
+        if len(extras_list) > 0:
+            ek, ev = extras_list[0]
+            c.setFont(BODY_FONT, 8)
+            c.setFillColorRGB(*GRAY)
+            c.drawString(info_x, info_y, f"{ek}: {ev}")
+
+        # ── Box 2 Content: Vehicle Info ──
+        veh_x = box2_x + pad
+        veh_y = box_top_y - hdr_h - 5 * mm
+
+        # Vehicle Model (prominent)
+        c.setFillColorRGB(0.08, 0.08, 0.12)
+        c.setFont(HEADER_FONT, 11)
+        veh_name_style = ParagraphStyle(name='VehName', fontName=HEADER_FONT, fontSize=11, leading=13)
+        veh_para = Paragraph(str(inv_meta['vehicle']), veh_name_style)
+        vw, vh = veh_para.wrapOn(c, box_w - 2 * pad, 20 * mm)
+        veh_para.drawOn(c, veh_x, veh_y - vh + 3 * mm)
+        veh_y -= max(vh, 5 * mm) + 1 * mm
+
+        # Reg No
+        c.setFillColorRGB(*GRAY)
+        c.setFont(BODY_FONT, 9)
+        reg_no_val = inv_meta.get('reg_no', '')
+        if reg_no_val:
+            c.drawString(veh_x, veh_y, f"Reg No: {reg_no_val}")
+            veh_y -= 4.5 * mm
+
+        # Extra field 2 (in Vehicle box) — e.g. "SERVICE TYPE: PAID SERVICE"
+        if len(extras_list) > 1:
+            ek2, ev2 = extras_list[1]
+            c.setFont(BODY_FONT, 8)
+            c.setFillColorRGB(*GRAY)
+            c.drawString(veh_x, veh_y, f"{ek2}: {ev2}")
+
+        # ── Revised Invoice Badge (positioned at top-right inside vehicle box) ──
         if extra_details.get("_is_edited"):
             AMBER = (0.90, 0.50, 0.00)
-            badge_w = 38 * mm
-            badge_h = 6 * mm
-            badge_x = MARGIN_R - badge_w
-            badge_y = extra_y - badge_h
+            badge_w = 36 * mm
+            badge_h = 5.5 * mm
+            badge_x = box2_x + box_w - badge_w - 2 * mm
+            badge_y = box_bot_y + 2 * mm
             c.setFillColorRGB(*AMBER)
             c.roundRect(badge_x, badge_y, badge_w, badge_h, 1.5 * mm, fill=1, stroke=0)
             c.setFillColorRGB(1, 1, 1)
-            c.setFont(HEADER_FONT, 8)
+            c.setFont(HEADER_FONT, 7.5)
             c.drawCentredString(badge_x + badge_w / 2, badge_y + 1.5 * mm, "\u2605 REVISED INVOICE")
 
-        # ── Custom Extra Fields (skip all internal _ keys) ─────────────
-        count = 0
-        for k, v in extra_details.items():
-            if str(k).startswith('_'): continue   # skip internal flags
-            if count > 1: break
-            label_x = MARGIN_L if count == 0 else col2_x
-            c.setFillColorRGB(*GRAY)
-            c.setFont(BODY_FONT, 9)
-            c.drawString(label_x, extra_y, f"{k}: {v}")
-            count += 1
+        # Update y for the items table to start below the boxes
+        extra_y = box_bot_y - 2 * mm
 
         # ━━━━━ ITEMS TABLE (Dual-Mode Auto-Switch) ━━━━━━━
         y = extra_y - 15 * mm
@@ -532,7 +627,7 @@ class InvoiceGenerator:
         y -= 10 * mm
         
         # --- ACCOUNTING ROUND OFF ---
-        exact_total = float(inv_meta['total'])
+        exact_total = float(inv_meta.get('exact_total', inv_meta['total']))
         rounded_total = float(round(exact_total))
         round_off = rounded_total - exact_total
 
@@ -645,18 +740,38 @@ class InvoiceGenerator:
         pay_mode  = str(inv_meta.get("payment_mode", "CASH"))
 
         # ── LEFT: UPI Payment QR ──────────────────────────────────────
-        # QR is only needed when UPI money is involved:
-        #   • pay_upi > 0  → customer already paid some via UPI (show amount paid)
-        #   • pay_due > 0  → remaining balance to be collected via UPI
-        upi_involved = (pay_upi > 0 or pay_due > 0)
-        if upi_enabled and UPI_ID and upi_involved:
-            # QR amount: outstanding due first, else the UPI portion already paid
+        # QR represents the UPI amount being paid / most recently paid via UPI.
+        is_regenerating = inv_meta.get("_is_regenerating", False)
+
+        if "_qr_amount" in inv_meta:
+            # Explicit override — e.g. during dues collection (exact UPI just collected)
+            qr_amount = inv_meta["_qr_amount"]
+        elif is_regenerating:
             if pay_due > 0:
-                qr_amount = pay_due          # collect remaining balance via UPI
-            elif pay_upi > 0:
-                qr_amount = pay_upi          # confirm the UPI portion already paid
+                # Pending dues still remain — show pending due as QR target
+                qr_amount = pay_due
             else:
-                qr_amount = inv_meta.get("_qr_amount", rounded_total)
+                # Invoice is fully paid — find the most recent UPI payment from history
+                # so the QR on the PDF reflects the last UPI transaction
+                qr_amount = 0.0
+                try:
+                    hist = self.db_manager.get_payment_history(inv_meta['invoice_id'])
+                    upi_payments = [(d, a) for d, a, m in hist if str(m).upper() == 'UPI']
+                    if upi_payments:
+                        # Most recent UPI entry (history is ordered ASC, so last = most recent)
+                        qr_amount = float(upi_payments[-1][1])
+                except Exception:
+                    pass
+                if qr_amount == 0.0:
+                    # Fallback: use total UPI from inv_meta
+                    qr_amount = pay_upi
+        else:
+            # Initial PDF generation from checkout
+            qr_amount = pay_upi
+
+        upi_involved = (qr_amount > 0)
+        
+        if upi_enabled and UPI_ID and upi_involved:
             upi_amount  = f"{qr_amount:.2f}"
             # URL-encode payee name for safety
             safe_pay_name = pay_name.replace(" ", "%20")
@@ -688,8 +803,8 @@ class InvoiceGenerator:
                 self._pending_qr_cleanup = tmp_qr.name
                 c.setFillColorRGB(*GRAY)
                 c.setFont(BODY_FONT, 7)
-                # Label: "Scan to Pay Due" if balance, else "Scan to Pay via UPI"
-                scan_label = "Scan to Pay Due" if pay_due > 0 else "Scan to Pay via UPI"
+                # Label strictly for the UPI amount
+                scan_label = "Scan to Pay via UPI"
                 c.drawCentredString(qr_x + qr_size / 2, qr_top_y - qr_size - 3 * mm,
                                     scan_label)
                 c.setFont(HEADER_FONT, 7)
@@ -704,62 +819,46 @@ class InvoiceGenerator:
         # ── PAYMENT BREAKDOWN BLOCK (between Grand Total and Signatory) ──────────
         pay_block_x = MARGIN_L + 25 * mm   # Fit snugly beside QR Core
         pay_block_y = qr_top_y - 1 * mm
-        pay_col_w   = 35 * mm              # Narrow constraint to stop rightward bleed
-
-        # Only render if user has saved at least one meaningful payment field
-        has_pay_data = (pay_cash + pay_upi + pay_due) > 0 or pay_mode != "CASH"
-
-        if has_pay_data:
-            # Mini header
-            c.setFillColorRGB(*GRAY)
-            c.setFont(HEADER_FONT, 7.5)
-            c.drawString(pay_block_x, pay_block_y, "PAYMENT RECEIVED")
-            pay_block_y -= 5 * mm
-
-            row_h = 4.5 * mm
-
-            def _pay_row(label, amount, color_rgb, bold=False):
-                nonlocal pay_block_y
+        pay_col_w   = 48 * mm              # Expanded to prevent overlap of label & amount
+        payments = self.db_manager.get_payment_history(inv_meta['invoice_id'])
+        if payments:
+            actual_payments = [p for p in payments if "DUE" not in str(p[2]).upper()]
+            if actual_payments:
                 c.setFillColorRGB(*GRAY)
-                c.setFont(BODY_FONT, 8)
-                c.drawString(pay_block_x + 2 * mm, pay_block_y, label)
-                c.setFillColorRGB(*color_rgb)
-                c.setFont(HEADER_FONT if bold else BODY_FONT, 8)
-                c.drawRightString(pay_block_x + pay_col_w, pay_block_y, f"Rs. {amount:,.2f}")
-                pay_block_y -= row_h
+                c.setFont(HEADER_FONT, 7.5)
+                c.drawString(pay_block_x, pay_block_y, "PAYMENT HISTORY")
+                pay_block_y -= 5 * mm
 
-            GREEN  = (0.0, 0.6, 0.3)
-            CYAN_C = (0.0, 0.5, 0.8)
-            RED_C  = (0.8, 0.1, 0.1)
+                initial_ts = str(actual_payments[0][0])[:16]
 
-            if pay_cash > 0:
-                _pay_row("Cash Received :", pay_cash, GREEN)
-            if pay_upi > 0:
-                _pay_row("UPI Received :",  pay_upi,  CYAN_C)
-                
-            pay_block_y -= 1 * mm # Extra margin to prevent badge overlap
+                for p_date, p_amt, p_mode in actual_payments:
+                    c.setFillColorRGB(*GRAY)
+                    c.setFont(BODY_FONT, 8)
 
-            if pay_due > 0:
-                # Highlighted due row
-                due_box_y = pay_block_y - 1.5 * mm
-                c.setFillColorRGB(0.98, 0.9, 0.9)
-                c.roundRect(pay_block_x, due_box_y, pay_col_w + 2 * mm, row_h + 2 * mm,
-                            1.5 * mm, fill=1, stroke=0)
-                _pay_row("BALANCE DUE :", pay_due, RED_C, bold=True)
-            else:
-                # Paid in full badge
-                badge_h = 5.5 * mm
-                badge_w = 34 * mm
-                badge_y = pay_block_y - 4 * mm
-                c.setFillColorRGB(0.9, 0.98, 0.9)
-                c.setStrokeColorRGB(*GREEN)
-                c.roundRect(pay_block_x, badge_y, badge_w, badge_h, 1.5 * mm, fill=1, stroke=1)
-                
-                c.setFillColorRGB(*GREEN)
-                c.setFont(HEADER_FONT, 8)
-                c.drawCentredString(pay_block_x + (badge_w / 2), badge_y + 1.5 * mm, "\u2713 PAID IN FULL")
-                pay_block_y -= 6 * mm
+                    if str(p_date)[:16] == initial_ts:
+                        display_str = str(p_mode)  # No date/time for initial payment
+                    else:
+                        display_str = f"{str(p_date)[:10]} | {p_mode}"  # Just date for dues collection
 
+                    c.drawString(pay_block_x + 2 * mm, pay_block_y, display_str)
+
+                    if str(p_mode).upper() == 'UPI':
+                        c.setFillColorRGB(0.0, 0.5, 0.8)  # Cyan for UPI
+                    else:
+                        c.setFillColorRGB(0.0, 0.6, 0.3)  # Green for Cash
+
+                    c.setFont(HEADER_FONT, 8)
+                    c.drawRightString(pay_block_x + pay_col_w, pay_block_y, f"Rs. {float(p_amt):,.2f}")
+
+                    pay_block_y -= 4.5 * mm
+
+        # ── Balance Due line — always shown in red whenever dues remain ──────────
+        if pay_due > 0:
+            pay_block_y -= 1 * mm
+            c.setFillColorRGB(*RED)
+            c.setFont(HEADER_FONT, 8)
+            c.drawString(pay_block_x + 2 * mm, pay_block_y, "\u26a0 Balance Due:")
+            c.drawRightString(pay_block_x + pay_col_w, pay_block_y, f"Rs. {pay_due:,.2f}")
 
         # ── RIGHT: Authorised Signatory  ──────────────────────────────
         sig_x = MARGIN_R - 55 * mm          # right-aligned block, ~55mm wide
@@ -824,7 +923,7 @@ class InvoiceGenerator:
 
         return file_path
 
-    def regenerate_invoice(self, invoice_id):
+    def regenerate_invoice(self, invoice_id, current_qr_amount=None, current_cash_amount=None):
         """
         Regenerate PDF for an existing invoice, checking for return status.
         """
@@ -832,6 +931,14 @@ class InvoiceGenerator:
         if not details:
             app_logger.error(f"Cannot regenerate invoice {invoice_id}: Not found")
             return None
+            
+        details["_is_regenerating"] = True
+            
+        if current_qr_amount is not None:
+            details["_qr_amount"] = current_qr_amount
+            
+        if current_cash_amount is not None:
+            details["_delta_cash"] = current_cash_amount
             
         # Check for returns
         conn = self.db_manager.get_connection()
@@ -868,9 +975,10 @@ class InvoiceGenerator:
              else:
                  discounted_total = item.get('total', 0.0)
 
-             qty = item.get('qty', 1)
-             unit_discounted = discounted_total / qty if qty > 0 else 0
+             qty = float(item.get('qty', 1.0))
+             unit_discounted = discounted_total / qty if qty > 0 else 0.0
              
+             raw_mrp = float(item.get('base_price', item.get('price', 0.0)))
              disc_perc = 0.0
              if raw_mrp > 0:
                  disc_perc = (1 - (unit_discounted / raw_mrp)) * 100
@@ -891,5 +999,8 @@ class InvoiceGenerator:
                  raw_mrp, # Rate (MRP)
                  discounted_total # Amount (Final)
              ])
+             
+        # Reconstruct exact_total from the sum of item totals to restore round off precision
+        details['exact_total'] = sum(pit[8] for pit in pdf_items)
              
         return self.generate_invoice_pdf(details, pdf_items)

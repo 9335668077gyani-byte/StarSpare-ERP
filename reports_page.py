@@ -786,6 +786,12 @@ class ReportsPage(QWidget):
         comp_report_action = QAction("📑 Comprehensive Detailed Report (PDF)", self)
         comp_report_action.triggered.connect(self.export_comprehensive_report)
         self.export_menu.addAction(comp_report_action)
+        
+        self.export_menu.addSeparator()
+        
+        ledger_action = QAction("📘 Open Customer Ledger", self)
+        ledger_action.triggered.connect(lambda: self._open_customer_ledger(""))
+        self.export_menu.addAction(ledger_action)
 
         self.btn_export.setMenu(self.export_menu)
 
@@ -842,9 +848,15 @@ class ReportsPage(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Check
         self.table.setColumnWidth(0, 40)
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)  # Date
+        self.table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)  # Invoice ID
         self.table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeMode.ResizeToContents)  # Items
+        self.table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeMode.ResizeToContents)  # Amount
         self.table.horizontalHeader().setSectionResizeMode(6, QHeaderView.ResizeMode.ResizeToContents)  # Status
-        self.table.horizontalHeader().setSectionResizeMode(7, QHeaderView.ResizeMode.ResizeToContents)  # Payment
+        self.table.horizontalHeader().setSectionResizeMode(8, QHeaderView.ResizeMode.ResizeToContents)  # Day Expense
+        
+        # Thicker Rows globally
+        self.table.verticalHeader().setDefaultSectionSize(40)
+        self.table.verticalHeader().setMinimumSectionSize(40)
         
         # Context Menu
         self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
@@ -1365,6 +1377,12 @@ class ReportsPage(QWidget):
             lambda: self._open_customer_history(customer_name)
         )
         menu.addAction(cust_action)
+        
+        ledger_action = QAction("📘 View Customer Ledger", self)
+        ledger_action.triggered.connect(
+            lambda: self._open_customer_ledger(customer_name)
+        )
+        menu.addAction(ledger_action)
 
         menu.addSeparator()
         
@@ -1451,6 +1469,16 @@ class ReportsPage(QWidget):
         except Exception as e:
             app_logger.error(f"CustomerHistoryDialog error: {e}")
             ProMessageBox.critical(self, "Error", str(e))
+            
+    def _open_customer_ledger(self, customer_name):
+        """Open CustomerLedgerDialog for the given customer."""
+        try:
+            from customer_ledger_dialog import CustomerLedgerDialog
+            dlg = CustomerLedgerDialog(self.db_manager, prefill_customer=customer_name)
+            dlg.exec()
+        except Exception as e:
+            app_logger.error(f"CustomerLedgerDialog error: {e}")
+            ProMessageBox.critical(self, "Error", str(e))
 
     def _on_dues_filter_toggled(self, checked):
         if checked:
@@ -1491,11 +1519,15 @@ class ReportsPage(QWidget):
             invoice_id, final_cash, final_upi, final_due, final_mode
         )
         if ok:
-            # Re-generate the physical PDF receipt with the updated partial/full payment info!
+            # Log the new fractional payment amount explicitly
+            if new_cash > 0: self.db_manager.log_payment(invoice_id, new_cash, 'CASH')
+            if new_upi > 0: self.db_manager.log_payment(invoice_id, new_upi, 'UPI')
+            
+                # Re-generate the physical PDF receipt with the updated partial/full payment info!
             try:
                 from invoice_generator import InvoiceGenerator
                 ig = InvoiceGenerator(self.db_manager)
-                ig.regenerate_invoice(invoice_id)
+                ig.regenerate_invoice(invoice_id, current_qr_amount=new_upi, current_cash_amount=new_cash)
             except PermissionError:
                 from custom_components import ProMessageBox
                 ProMessageBox.warning(self, "Close PDF Please", "Payment saved!\n\nCould not update the PDF file because it is OPEN in your browser or another program.\n\nClose the PDF, then right-click and select 'View Invoice PDF' to see the updated dues.")
@@ -1631,9 +1663,10 @@ class ReportsPage(QWidget):
             else:
                 cw.setStyleSheet("background-color: transparent;")
             cl = QHBoxLayout(cw)
-            cl.setContentsMargins(0, 0, 0, 0)
+            cl.setContentsMargins(0, 2, 0, 0)
             cl.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            cl.addWidget(chk)
+            chk.setFixedSize(16, 16) # Force the widget to perfectly match the indicator size
+            cl.addWidget(chk, 0, Qt.AlignmentFlag.AlignCenter)
             self.table.setCellWidget(i, 0, cw)
 
             # 1: Date
@@ -1648,6 +1681,7 @@ class ReportsPage(QWidget):
             
             # 3: Customer
             cust_item = create_item(row[2], has_return, is_edited)
+            cust_item.setTextAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
             cust_item.setToolTip(str(row[2]))
             self.table.setItem(i, 2 + 1, cust_item)
             
@@ -1691,34 +1725,62 @@ class ReportsPage(QWidget):
             if pay_due > 0.01:
                 count_due += 1
 
-            mode_colors = {
-                "CASH":    ("#00e5ff", "rgba(0,229,255,0.10)"),
-                "UPI":     ("#00ff88", "rgba(0,255,136,0.10)"),
-                "SPLIT":   ("#f1c40f", "rgba(241,196,15,0.10)"),
-                "PARTIAL": ("#ff9800", "rgba(255,152,0,0.10)"),
-                "DUE":     ("#ff4444", "rgba(255,68,68,0.10)"),
-            }
-            fg, bg = mode_colors.get(pay_mode, ("#aaa", "transparent"))
-            if pay_due > 0.01 and pay_mode not in ("PARTIAL", "DUE"):
-                fg, bg = mode_colors["PARTIAL"]
-                pay_mode = "PARTIAL"
+            # Build visually impressive tag widget
+            pay_widget = QWidget()
+            pay_widget.setStyleSheet("background: transparent;")
+            pw_layout = QHBoxLayout(pay_widget)
+            pw_layout.setContentsMargins(15, 2, 4, 2)
+            pw_layout.setSpacing(6)
+            pw_layout.setAlignment(Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft)
+            
+            def create_tag(text, bg_color, text_color, border_color="transparent"):
+                lbl = QLabel(text)
+                lbl.setFixedHeight(20)
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lbl.setStyleSheet(f"""
+                    QLabel {{
+                        background-color: {bg_color};
+                        color: {text_color};
+                        border: 1px solid {border_color};
+                        border-radius: 4px;
+                        padding: 0px 6px;
+                        font-size: 10px;
+                        font-weight: bold;
+                    }}
+                """)
+                return lbl
 
-            pay_tag_txt = pay_mode
-            if pay_mode == "SPLIT":
-                pay_tag_txt = f"SPLIT (C:{pay_cash:g}|U:{pay_upi:g})"
+            if pay_due > 0.01:
+                pw_layout.addWidget(create_tag(f"DUE: ₹{pay_due:g}", "rgba(255,68,68,0.1)", "#ff4444", "rgba(255,68,68,0.3)"))
+                if pay_cash > 0:
+                    pw_layout.addWidget(create_tag(f"C: ₹{pay_cash:g}", "rgba(0,229,255,0.05)", "#00e5ff", "rgba(0,229,255,0.2)"))
+                if pay_upi > 0:
+                    pw_layout.addWidget(create_tag(f"U: ₹{pay_upi:g}", "rgba(0,255,136,0.05)", "#00ff88", "rgba(0,255,136,0.2)"))
+            elif pay_mode == "SPLIT":
+                pw_layout.addWidget(create_tag(f"💵 ₹{pay_cash:g}", "rgba(0,229,255,0.1)", "#00e5ff", "rgba(0,229,255,0.3)"))
+                pw_layout.addWidget(create_tag(f"📱 ₹{pay_upi:g}", "rgba(0,255,136,0.1)", "#00ff88", "rgba(0,255,136,0.3)"))
+            elif pay_mode == "UPI":
+                pw_layout.addWidget(create_tag(f"📱 UPI ₹{pay_upi:g}", "rgba(0,255,136,0.1)", "#00ff88", "rgba(0,255,136,0.3)"))
+            else:
+                pw_layout.addWidget(create_tag(f"💵 CASH ₹{pay_cash:g}", "rgba(0,229,255,0.1)", "#00e5ff", "rgba(0,229,255,0.3)"))
 
-            if pay_due >= 0.01:
-                pay_tag_txt = f"DUE ₹{pay_due:,.2f}"
-                
-            pay_item = QTableWidgetItem(pay_tag_txt)
-            pay_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            pay_item.setForeground(QColor(fg))
-            pay_item.setBackground(QColor(bg))
+            # Dummy item for sorting/background and ensuring column width
+            dummy_item = QTableWidgetItem()
+            
+            # Since Column 7 uses ResizeToContents, an empty string causes it to collapse.
+            # We enforce a QSize to guarantee enough horizontal breathing room for the layout tags.
+            from PyQt6.QtCore import QSize
+            tag_count = pw_layout.count()
+            min_width = max(190, 30 + (tag_count * 95))
+            dummy_item.setSizeHint(QSize(min_width, 36))
+            
             if has_return:
-                pay_item.setBackground(QColor(42, 15, 18, 180))
+                dummy_item.setBackground(QColor(42, 15, 18, 180))
             elif is_edited:
-                pay_item.setBackground(QColor(10, 31, 38, 180))
-            self.table.setItem(i, 7, pay_item)
+                dummy_item.setBackground(QColor(10, 31, 38, 180))
+            
+            self.table.setItem(i, 7, dummy_item)
+            self.table.setCellWidget(i, 7, pay_widget)
 
             # 8: Day Expense
             day_exp = expense_map.get(dt_str, 0.0)
@@ -2004,7 +2066,15 @@ class ReportsPage(QWidget):
             # 3. Totals
             total_rev  = sum((float(r[4]) if r[4] else 0.0) - (float(r[12]) if len(r) > 12 and r[12] else 0.0) for r in sales_data)
             total_exp  = sum(float(r[2]) if r[2] else 0.0 for r in expense_data)
-            total_cogs = self.db_manager.get_total_cogs(d_from, d_to)
+
+            # COGS must match the scope: selected invoices OR full date range
+            if selected_ids:
+                total_cogs = self.db_manager.get_cogs_for_invoices(selected_ids)
+                total_exp  = 0.0  # Expenses aren't invoice-specific, exclude in selection mode
+                expense_data = {} # Clear expenses so they don't incorrectly render below the invoices!
+            else:
+                total_cogs = self.db_manager.get_total_cogs(d_from, d_to)
+
             total_net  = total_rev - total_exp - total_cogs
 
             # 4. Generate PDF

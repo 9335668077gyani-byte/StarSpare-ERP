@@ -8,7 +8,7 @@ import pandas as pd
 import ui_theme
 from styles import (STYLE_TABLE_CYBER, STYLE_INPUT_CYBER, COLOR_ACCENT_CYAN, 
                    COLOR_SURFACE, COLOR_TEXT_PRIMARY, DIM_MARGIN_STD, DIM_SPACING_STD, COLOR_ACCENT_GREEN, 
-                   STYLE_TAB_WIDGET, STYLE_GLASS_PANEL,
+                   STYLE_TAB_WIDGET, STYLE_GLASS_PANEL, COLOR_ACCENT_RED, COLOR_ACCENT_YELLOW,
                    STYLE_DROPDOWN_CYBER)
 from logger import app_logger
 from custom_components import ProMessageBox, ProDialog, ProTableDelegate
@@ -16,6 +16,22 @@ from vendor_manager import VendorManagerDialog, VendorManagerWidget
 from report_generator import ReportGenerator
 from whatsapp_helper import send_po_msg, send_report_msg
 from auto_enrich_worker import AutoEnrichWorker
+
+class _POCard(QWidget):
+    """Custom QWidget for PO list rows that captures right-click reliably.
+    All child label events are made transparent so the click always reaches here."""
+    def __init__(self, po_id, menu_callback, parent=None):
+        super().__init__(parent)
+        self._po_id = po_id
+        self._menu_callback = menu_callback
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.MouseButton.RightButton:
+            self._menu_callback(self._po_id)
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
 
 class PODataThread(QThread):
     data_loaded = pyqtSignal(list)
@@ -590,7 +606,7 @@ class BulkReceiveDialog(QDialog):
             p_prv_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             p_prv_item.setForeground(QColor("#8899aa")) # Dim color for prev rcvd
             
-            p_pen_item = QTableWidgetItem(str(pending))
+            p_pen_item = QTableWidgetItem(f"{round(pending, 3):g}")
             p_pen_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             
             self.table.setItem(r, 0, p_name_item)
@@ -849,6 +865,25 @@ class SupplierProfileDialog(QDialog):
         self.load_history() # Initial Load
         
         tabs.addTab(tab_hist, "ORDERS")
+        
+        # Financial Ledger Tab
+        tab_ledger = QWidget()
+        l_ledger = QVBoxLayout(tab_ledger)
+        l_ledger.setContentsMargins(DIM_MARGIN_STD, DIM_MARGIN_STD, DIM_MARGIN_STD, DIM_MARGIN_STD)
+        self.table_ledger = QTableWidget()
+        self.table_ledger.setColumnCount(4)
+        self.table_ledger.setHorizontalHeaderLabels(["Datetime", "Purchase Order", "Payment Mode", "Amount"])
+        self.table_ledger.setStyleSheet(ui_theme.get_table_style())
+        self.table_ledger.horizontalHeader().setStretchLastSection(True)
+        l_ledger.addWidget(self.table_ledger)
+        
+        self.lbl_ledger_total = QLabel("Total Paid: ₹ 0.00")
+        self.lbl_ledger_total.setStyleSheet(f"color: {COLOR_ACCENT_GREEN}; font-size: 14px; font-weight: bold;")
+        self.lbl_ledger_total.setAlignment(Qt.AlignmentFlag.AlignRight)
+        l_ledger.addWidget(self.lbl_ledger_total)
+        
+        self.load_vendor_ledger()
+        tabs.addTab(tab_ledger, "💳 FINANCIAL LEDGER")
         
         # Tab B: Catalog
         tab_cat = QWidget()
@@ -1442,7 +1477,7 @@ class SupplierProfileDialog(QDialog):
             success, path = rg.generate_vendor_statement_pdf(self.vendor_name, start, end, pos, total_amt, total_items)
             
             if success:
-                from utils import send_report_msg
+                from whatsapp_helper import send_report_msg
                 ans = ProMessageBox.question(self, "Success", f"Vendor Statement generated successfully at:\n{path}\n\nDo you want to share this report via WhatsApp?")
                 if ans:
                     try:
@@ -1462,6 +1497,31 @@ class SupplierProfileDialog(QDialog):
         except Exception as e:
             app_logger.error(f"Error generating Vendor Statement PDF: {e}")
             ProMessageBox.critical(self, "Error", f"An error occurred: {e}")
+
+    def load_vendor_ledger(self):
+        logs = self.db_manager.get_vendor_ledger(self.vendor_name)
+        self.table_ledger.setRowCount(len(logs))
+        total_paid = 0.0
+        from PyQt6.QtGui import QColor
+        for r, row in enumerate(logs):
+            # row: 0=payment_date, 1=po_id, 2=amount, 3=payment_mode
+            amt = float(row[2])
+            total_paid += amt
+            m = str(row[3]).upper()
+            
+            self.table_ledger.setItem(r, 0, QTableWidgetItem(str(row[0])))
+            self.table_ledger.setItem(r, 1, QTableWidgetItem(str(row[1])))
+            
+            item_m = QTableWidgetItem(m)
+            if m == "CASH": item_m.setForeground(QColor(COLOR_ACCENT_CYAN))
+            elif m == "UPI": item_m.setForeground(QColor(COLOR_ACCENT_GREEN))
+            self.table_ledger.setItem(r, 2, item_m)
+            
+            item_a = QTableWidgetItem(f"₹ {amt:,.2f}")
+            item_a.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            self.table_ledger.setItem(r, 3, item_a)
+            
+        self.lbl_ledger_total.setText(f"Total Paid: ₹ {total_paid:,.2f}")
 
 class PurchaseOrderPage(QWidget):
 
@@ -2117,6 +2177,7 @@ class PurchaseOrderPage(QWidget):
         if not btn: return
         
         # Calculate exactly which row this button belongs to right now
+        from PyQt6.QtCore import QPoint
         pos = btn.mapTo(self.table_create.viewport(), QPoint(0, 0))
         index = self.table_create.indexAt(pos)
         
@@ -3189,6 +3250,8 @@ class PurchaseOrderPage(QWidget):
         self.table_history_master.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table_history_master.setShowGrid(False)
         self.table_history_master.itemClicked.connect(self.show_po_details)
+        # Install event filter on viewport so right-click works even when cellWidgets cover rows
+        self.table_history_master.viewport().installEventFilter(self)
         hdr = self.table_history_master.horizontalHeader()
         hdr.setStretchLastSection(True)
         hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
@@ -3405,12 +3468,12 @@ class PurchaseOrderPage(QWidget):
             return '#cc8800', '#ffb300', 'rgba(180,100,0,0.18)'
         return '#2a3a50', '#5a7a99', 'rgba(20,30,45,0.25)'
 
-    def _make_po_card(self, po_id, supplier, status):
-        """Full-width card: flush left accent bar + PO ID + Supplier + status chip — no padding gaps."""
+    def _make_po_card(self, po_id, supplier, status, due_amount=0.0, pay_status="UNPAID"):
+        """Full-width card using _POCard subclass so right-click is always caught."""
         border_col, txt_col, bg_col = self._status_colors(status)
         s = str(status).upper()
 
-        card = QWidget()
+        card = _POCard(po_id, self._trigger_po_context_menu)
         card.setStyleSheet(f"""
             QWidget {{
                 background-color: #091018;
@@ -3424,7 +3487,6 @@ class PurchaseOrderPage(QWidget):
         lay.setContentsMargins(10, 6, 8, 6)
         lay.setSpacing(2)
 
-        # Top row: PO ID + status chip
         top_row = QHBoxLayout()
         top_row.setContentsMargins(0, 0, 0, 0)
         top_row.setSpacing(6)
@@ -3434,33 +3496,49 @@ class PurchaseOrderPage(QWidget):
             f"color: {txt_col}; font-family: 'Consolas', monospace;"
             " font-size: 11px; font-weight: bold; letter-spacing: 0.5px;"
         )
+        lbl_po.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
-        # Mini status pill
         lbl_status = QLabel(s)
         lbl_status.setStyleSheet(f"""
             QLabel {{
-                background: {bg_col};
-                color: {txt_col};
-                border: 1px solid {border_col};
-                border-radius: 3px;
-                font-size: 8px;
-                font-weight: bold;
-                letter-spacing: 0.8px;
-                padding: 1px 5px;
+                background: {bg_col}; color: {txt_col};
+                border: 1px solid {border_col}; border-radius: 3px;
+                font-size: 8px; font-weight: bold;
+                letter-spacing: 0.8px; padding: 1px 5px;
             }}
         """)
         lbl_status.setFixedHeight(16)
         lbl_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        lbl_status.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
-        top_row.addWidget(lbl_po)
-        top_row.addStretch()
-        top_row.addWidget(lbl_status)
+        due_amount = float(due_amount or 0)
+        fin_col = COLOR_ACCENT_RED if due_amount > 0.01 else COLOR_ACCENT_GREEN
+        fin_text = f"DUE: \u20b9{due_amount:,.2f}"
+        if str(pay_status).upper() == "PAID":
+            fin_text = "\U0001f4b0 PAID"
+            fin_col = COLOR_ACCENT_GREEN
+        elif str(pay_status).upper() == "PARTIAL":
+            fin_col = "#ffb300"
+
+        lbl_fin = QLabel(fin_text)
+        lbl_fin.setStyleSheet(
+            f"color: {fin_col}; font-size: 9px; font-weight: bold;"
+            " background: rgba(0,0,0,0.3); border-radius: 3px; padding: 1px 4px;"
+        )
+        lbl_fin.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
 
         lbl_sup = QLabel(supplier)
         lbl_sup.setStyleSheet(ui_theme.get_page_title_style())
+        lbl_sup.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+
+        top_row.addWidget(lbl_po)
+        top_row.addStretch()
+        top_row.addWidget(lbl_fin)
+        top_row.addWidget(lbl_status)
 
         lay.addLayout(top_row)
         lay.addWidget(lbl_sup)
+
         return card
 
     def _make_status_chip(self, status_text):
@@ -3531,12 +3609,16 @@ class PurchaseOrderPage(QWidget):
             _cl.addWidget(chk)
             self.table_history_master.setCellWidget(r, 0, _cw)
 
-            # Col 1: Combined PO card — ghost item holds PO ID in UserRole only
+            # col 1 has the PO ID in UserRole, and we display it with financials
             ghost = QTableWidgetItem("")  # empty text — prevents bleed-through
             ghost.setData(Qt.ItemDataRole.UserRole, str(row[0]))
             ghost.setFlags(ghost.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            
+            due_amt = float(row[6]) if len(row) > 6 and row[6] is not None else 0.0
+            pay_stat = str(row[7]) if len(row) > 7 and row[7] is not None else "UNPAID"
+            
             self.table_history_master.setItem(r, 1, ghost)
-            self.table_history_master.setCellWidget(r, 1, self._make_po_card(str(row[0]), str(row[1]), str(row[3])))
+            self.table_history_master.setCellWidget(r, 1, self._make_po_card(str(row[0]), str(row[1]), str(row[3]), due_amt, pay_stat))
 
             self.table_history_master.setRowHeight(r, 48)
 
@@ -4054,6 +4136,101 @@ class PurchaseOrderPage(QWidget):
             else:
                 ProMessageBox.critical(self, "Error", f"Failed to update: {msg}")
 
+    def eventFilter(self, source, event):
+        """Fallback: handle right-click on raw table viewport (empty row area)."""
+        from PyQt6.QtCore import QEvent
+        if (event.type() == QEvent.Type.MouseButtonPress
+                and event.button() == Qt.MouseButton.RightButton
+                and source is self.table_history_master.viewport()):
+            index = self.table_history_master.indexAt(event.pos())
+            if index.isValid():
+                po_id_item = self.table_history_master.item(index.row(), 1)
+                if po_id_item:
+                    pid = po_id_item.data(Qt.ItemDataRole.UserRole) or po_id_item.text()
+                    if pid:
+                        self._trigger_po_context_menu(pid)
+                        return True
+        return super().eventFilter(source, event)
+
+    def _trigger_po_context_menu(self, po_id):
+        from PyQt6.QtWidgets import QMenu
+        from PyQt6.QtGui import QAction, QCursor
+
+        menu = QMenu(self)
+        menu.setStyleSheet(ui_theme.get_dropdown_style())
+        
+        act_pay = QAction("💰 Pay Vendor (Settle Due)", self)
+        act_pay.triggered.connect(lambda: self._handle_pay_vendor(po_id))
+        
+        act_hist = QAction("💳 Payment History By Order", self)
+        act_hist.triggered.connect(lambda: self._show_po_payment_history(po_id))
+
+        menu.addAction(act_pay)
+        menu.addAction(act_hist)
+        
+        menu.exec(QCursor.pos())
+        
+    def _handle_pay_vendor(self, po_id):
+        po_details = self.db_manager.get_purchase_order_by_id(po_id)
+        if not po_details: return
+        due = float(po_details.get("due_amount", 0.0))
+        if due <= 0:
+            ProMessageBox.information(self, "Settled", "This Purchase Order is already fully paid.")
+            return
+
+        dialog = VendorPaymentDialog(self, po_id, po_details.get("supplier_name", ""), due)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            cash, upi = dialog.get_payment_data()
+            total_paid_now = cash + upi
+            if total_paid_now <= 0: return
+
+            new_due = max(0.0, due - total_paid_now)
+            prev_paid = float(po_details.get("paid_amount", 0.0))
+            new_paid = prev_paid + total_paid_now
+            
+            new_status = "PARTIAL" if new_due > 0.01 else "PAID"
+
+            success, msg = self.db_manager.update_po_financials(po_id, new_paid, new_due, new_status)
+            if success:
+                if cash > 0: self.db_manager.log_po_payment(po_id, po_details.get("supplier_name", ""), cash, "CASH")
+                if upi > 0: self.db_manager.log_po_payment(po_id, po_details.get("supplier_name", ""), upi, "UPI")
+                self.refresh_history_tab()
+                ProMessageBox.information(self, "Success", f"Payment logged successfully.\nRemaining Due: ₹ {new_due:,.2f}")
+            else:
+                ProMessageBox.critical(self, "Error", f"Failed to log payment: {msg}")
+
+    def _show_po_payment_history(self, po_id):
+        logs = self.db_manager.get_po_payment_history(po_id)
+        if not logs:
+            ProMessageBox.information(self, "No History", "No isolated payment history logged for this specific order yet.")
+            return
+            
+        dialog = QDialog(self)
+        dialog.setWindowTitle(f"💳 Payment History: {po_id}")
+        dialog.setStyleSheet(ui_theme.get_dialog_style())
+        dialog.setMinimumSize(450, 400)
+        lay = QVBoxLayout(dialog)
+        
+        table = QTableWidget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(["Datetime", "Amount", "Mode"])
+        table.setStyleSheet(ui_theme.get_table_style())
+        table.horizontalHeader().setStretchLastSection(True)
+        table.setRowCount(len(logs))
+        
+        from PyQt6.QtGui import QColor
+        for i, row in enumerate(logs):
+            table.setItem(i, 0, QTableWidgetItem(str(row[0])))
+            table.setItem(i, 1, QTableWidgetItem(f"₹ {float(row[1]):,.2f}"))
+            m = str(row[2]).upper()
+            item_m = QTableWidgetItem(m)
+            if m == "CASH": item_m.setForeground(QColor(COLOR_ACCENT_CYAN))
+            elif m == "UPI": item_m.setForeground(QColor(COLOR_ACCENT_GREEN))
+            table.setItem(i, 2, item_m)
+            
+        lay.addWidget(table)
+        dialog.exec()
+
     # --- TAB 5: VENDOR REGISTRY ---
     def setup_vendors_tab(self):
         l = QVBoxLayout(self.tab_vendors)
@@ -4061,3 +4238,55 @@ class PurchaseOrderPage(QWidget):
         
         self.vendor_manager_widget = VendorManagerWidget(self.db_manager)
         l.addWidget(self.vendor_manager_widget)
+
+
+class VendorPaymentDialog(ProDialog):
+    def __init__(self, parent, po_id, vendor_name, amount_due):
+        super().__init__(parent)
+        self.setWindowTitle(f"💰 Settle Payment: {po_id}")
+        self.amount_due = amount_due
+        
+        lay = QVBoxLayout(self.content_widget)
+        lay.setSpacing(12)
+        
+        lbl_info = QLabel(f"<b>Vendor:</b> {vendor_name}<br><b>Amount Due:</b> ₹ {amount_due:,.2f}")
+        lbl_info.setStyleSheet(f"color: {COLOR_TEXT_PRIMARY}; font-size: 13px;")
+        lay.addWidget(lbl_info)
+        
+        form_lay = QFormLayout()
+        self.spin_cash = QDoubleSpinBox()
+        self.spin_cash.setMaximum(99999999)
+        self.spin_cash.setStyleSheet(STYLE_INPUT_CYBER)
+        self.spin_cash.setFixedHeight(34)
+        
+        self.spin_upi = QDoubleSpinBox()
+        self.spin_upi.setMaximum(99999999)
+        self.spin_upi.setStyleSheet(STYLE_INPUT_CYBER)
+        self.spin_upi.setFixedHeight(34)
+        
+        form_lay.addRow("CASH Payment:", self.spin_cash)
+        form_lay.addRow("UPI Payment:", self.spin_upi)
+        lay.addLayout(form_lay)
+        
+        btn_lay = QHBoxLayout()
+        btn_save = QPushButton("LOG PAYMENT")
+        btn_save.setCursor(Qt.CursorShape.PointingHandCursor)
+        btn_save.setStyleSheet(ui_theme.get_success_button_style())
+        btn_save.clicked.connect(self._validate_and_accept)
+        btn_lay.addStretch()
+        btn_lay.addWidget(btn_save)
+        
+        lay.addLayout(btn_lay)
+        
+    def _validate_and_accept(self):
+        total = self.spin_cash.value() + self.spin_upi.value()
+        if total <= 0:
+            QMessageBox.warning(self, "Invalid", "Payment amount must be greater than zero.")
+            return
+        if total > self.amount_due:
+            reply = QMessageBox.question(self, "Overpayment", f"Total payment (₹{total:,.2f}) exceeds the Due Amount (₹{self.amount_due:,.2f}).\\nDo you want to proceed anyway?")
+            if reply != QMessageBox.StandardButton.Yes: return
+        self.accept()
+        
+    def get_payment_data(self):
+        return self.spin_cash.value(), self.spin_upi.value()

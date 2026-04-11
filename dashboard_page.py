@@ -391,6 +391,11 @@ class DashboardPage(QWidget):
         self.card_parts = ReactorStatCard("Unique Parts",      "0",    COLOR_ACCENT_CYAN)
         self.card_stock = ReactorStatCard("Total Stock",       "0",    COLOR_ACCENT_GREEN)
         self.card_low   = ReactorStatCard("Critical Alerts",   "0",    COLOR_ACCENT_RED)
+        
+        # Make card_low clickable
+        self.card_low.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.card_low.mousePressEvent = self.open_low_stock_dialog
+        
         self.card_value = ReactorStatCard("Inventory Value",   "Rs. 0", COLOR_ACCENT_AMBER)
         self.card_today = ReactorStatCard("Today's Net Sales", "Rs. 0", COLOR_ACCENT_CYAN)
         self.grid.addWidget(self.card_parts, 0, 0)
@@ -524,3 +529,8 @@ class DashboardPage(QWidget):
         area.attachAxis(axisY)
 
         self.chart_view.setChart(chart)
+
+    def open_low_stock_dialog(self, event):
+        from low_stock_dialog import LowStockDialog
+        dlg = LowStockDialog(self.db_manager)
+        dlg.exec()

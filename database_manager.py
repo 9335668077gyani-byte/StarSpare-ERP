@@ -277,7 +277,8 @@ class DatabaseManager:
                     "phone": "TEXT DEFAULT ''",
                     "address": "TEXT DEFAULT ''",
                     "gstin": "TEXT DEFAULT ''",
-                    "notes": "TEXT DEFAULT ''"
+                    "notes": "TEXT DEFAULT ''",
+                    "discount": "REAL DEFAULT 0.0"
                 }
 
                 for col, dtype in vendor_updates.items():
@@ -454,7 +455,8 @@ class DatabaseManager:
                     phone TEXT,
                     address TEXT,
                     gstin TEXT,
-                    notes TEXT
+                    notes TEXT,
+                    discount REAL DEFAULT 0.0
                 )
             """)
 
@@ -598,6 +600,33 @@ class DatabaseManager:
                 cursor.execute("ALTER TABLE purchase_orders ADD COLUMN total_amount REAL DEFAULT 0")
             except: pass
 
+            # Migration for purchase_orders financial fields (PO Ledger)
+            try:
+                cursor.execute("PRAGMA table_info(purchase_orders)")
+                existing_po_cols = [c[1] for c in cursor.fetchall()]
+                if "paid_amount" not in existing_po_cols:
+                    cursor.execute("ALTER TABLE purchase_orders ADD COLUMN paid_amount REAL DEFAULT 0")
+                    cursor.execute("ALTER TABLE purchase_orders ADD COLUMN due_amount REAL DEFAULT 0")
+                    cursor.execute("ALTER TABLE purchase_orders ADD COLUMN payment_status TEXT DEFAULT 'UNPAID'")
+                    
+                    # Backfill existing legacy POs so they have accurate due_amount
+                    cursor.execute("UPDATE purchase_orders SET due_amount = total_amount, payment_status = 'UNPAID' WHERE total_amount > 0")
+            except Exception as e:
+                app_logger.error(f"Migration Error (purchase_orders financials): {e}")
+
+            # PO Payment History Table (Vendor Ledger)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS po_payment_history (
+                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    po_id TEXT,
+                    vendor_name TEXT,
+                    amount REAL,
+                    payment_mode TEXT,
+                    payment_date TEXT,
+                    FOREIGN KEY (po_id) REFERENCES purchase_orders(po_id)
+                )
+            """)
+
             # Returns Table (New for v1.5 - Sales Return)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS returns (
@@ -613,7 +642,56 @@ class DatabaseManager:
                 )
             """)
 
+            # Payment History Table (For tracking when/how dues and initial payments were made)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS payment_history (
+                    log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    invoice_id TEXT,
+                    amount REAL,
+                    payment_mode TEXT,
+                    payment_date TEXT,
+                    FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id)
+                )
+            """)
+
+            # Migration for legacy initial payments (One-time run to seed history)
+            try:
+                cursor.execute("SELECT count(*) FROM payment_history")
+                if cursor.fetchone()[0] == 0:
+                    app_logger.info("Seeding payment_history for existing invoices...")
+                    cursor.execute("""
+                        INSERT INTO payment_history (invoice_id, amount, payment_mode, payment_date)
+                        SELECT invoice_id, payment_cash, 'CASH', date 
+                        FROM invoices WHERE payment_cash > 0
+                    """)
+                    cursor.execute("""
+                        INSERT INTO payment_history (invoice_id, amount, payment_mode, payment_date)
+                        SELECT invoice_id, payment_upi, 'UPI', date 
+                        FROM invoices WHERE payment_upi > 0
+                    """)
+            except Exception as e:
+                app_logger.error(f"Migration Error (payment_history seeding): {e}")
+
+            # ── PERFORMANCE INDEXES (Optimization 1) ───────────────────────
+            # These make report queries 10x faster as data grows over years.
+            # CREATE INDEX IF NOT EXISTS is safe — runs silently if already exists.
+            try:
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_invoices_date ON invoices(date)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_invoice_id ON sales(invoice_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_part_id ON sales(part_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_returns_invoice_id ON returns(invoice_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_po_items_po_id ON po_items(po_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_po_items_part_id ON po_items(part_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_payment_history_invoice ON payment_history(invoice_id)")
+                cursor.execute("CREATE INDEX IF NOT EXISTS idx_activity_logs_date ON activity_logs(created_at)")
+                conn.commit()
+                app_logger.info("Performance indexes verified/created.")
+            except Exception as e:
+                app_logger.warning(f"Index creation warning (non-fatal): {e}")
+
             # Migration for items_count in invoices (Task 20)
+
             try:
                 cursor.execute("PRAGMA table_info(invoices)")
                 cols = [c[1] for c in cursor.fetchall()]
@@ -1192,14 +1270,14 @@ class DatabaseManager:
         finally:
             conn.close()
     # --- Vendor Management ---
-    def add_vendor(self, name, rep_name, phone, address, gstin, notes=""):
+    def add_vendor(self, name, rep_name, phone, address, gstin, notes="", discount=0.0):
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
-                INSERT INTO vendors (name, rep_name, phone, address, gstin, notes)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (name, rep_name, phone, address, gstin, notes))
+                INSERT INTO vendors (name, rep_name, phone, address, gstin, notes, discount)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (name, rep_name, phone, address, gstin, notes, float(discount)))
             conn.commit()
             return True, "Vendor added successfully."
         except sqlite3.IntegrityError:
@@ -1215,7 +1293,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             # Explicitly select columns to ensure order matches UI expectations
-            cursor.execute("SELECT id, name, rep_name, phone, address, gstin, notes FROM vendors ORDER BY name")
+            cursor.execute("SELECT id, name, rep_name, phone, address, gstin, notes, discount FROM vendors ORDER BY name")
             return cursor.fetchall()
         except Exception as e:
             app_logger.error(f"Error getting vendors: {e}")
@@ -1223,15 +1301,15 @@ class DatabaseManager:
         finally:
             conn.close()
 
-    def update_vendor(self, vendor_id, name, rep_name, phone, address, gstin, notes):
+    def update_vendor(self, vendor_id, name, rep_name, phone, address, gstin, notes, discount=0.0):
         conn = self.get_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("""
                 UPDATE vendors 
-                SET name=?, rep_name=?, phone=?, address=?, gstin=?, notes=?
+                SET name=?, rep_name=?, phone=?, address=?, gstin=?, notes=?, discount=?
                 WHERE id=?
-            """, (name, rep_name, phone, address, gstin, notes, vendor_id))
+            """, (name, rep_name, phone, address, gstin, notes, float(discount), vendor_id))
             conn.commit()
             return True, "Vendor updated successfully."
         except sqlite3.IntegrityError:
@@ -1265,7 +1343,7 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             # Explicit selection
-            cursor.execute("SELECT id, name, rep_name, phone, address, gstin, notes FROM vendors WHERE name = ?", (vendor_name,))
+            cursor.execute("SELECT id, name, rep_name, phone, address, gstin, notes, discount FROM vendors WHERE name = ?", (vendor_name,))
             return cursor.fetchone()
         except Exception as e:
             app_logger.error(f"Error getting vendor details: {e}")
@@ -1485,7 +1563,7 @@ class DatabaseManager:
             cursor.execute("SELECT SUM(qty) FROM parts")
             res_qty = cursor.fetchone()[0]
             stats['total_stock_qty'] = res_qty if res_qty else 0
-            cursor.execute("SELECT COUNT(*) FROM parts WHERE qty < 5")
+            cursor.execute("SELECT COUNT(*) FROM parts WHERE qty <= reorder_level AND reorder_level > 0")
             stats['low_stock_count'] = cursor.fetchone()[0]
             cursor.execute("SELECT SUM(unit_price * qty) FROM parts")
             res_val = cursor.fetchone()[0]
@@ -1530,13 +1608,18 @@ class DatabaseManager:
             # --- Atomic transaction: stock decrement + sales insert together ---
             cursor.execute("BEGIN TRANSACTION")
 
-            cursor.execute("SELECT qty, unit_price, avg_landing_cost, last_cost FROM parts WHERE part_id = ?", (part_id,))
+            cursor.execute("""
+                SELECT p.qty, p.unit_price, p.avg_landing_cost, p.last_cost, v.discount 
+                FROM parts p 
+                LEFT JOIN vendors v ON p.vendor_name = v.name 
+                WHERE p.part_id = ?
+            """, (part_id,))
             row = cursor.fetchone()
             if not row:
                 conn.rollback()
                 return False, "Part not found"
 
-            curr_qty, price, avg_landing_cost, last_cost = row
+            curr_qty, price, avg_landing_cost, last_cost, vendor_discount = row
             if curr_qty < qty:
                 conn.rollback()
                 return False, f"Insufficient stock: {curr_qty}"
@@ -1548,9 +1631,15 @@ class DatabaseManager:
             sale_price = price_override if price_override is not None else price
             sale_date  = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            # 3. COGS — prefer weighted avg landing cost, fall back to last_cost
-            unit_cogs  = float(avg_landing_cost) if avg_landing_cost and float(avg_landing_cost) > 0 \
-                         else (float(last_cost) if last_cost else 0.0)
+            # 3. COGS — prefer weighted avg landing cost, fall back to last_cost, then fallback to vendor discount calculation
+            unit_cogs = 0.0
+            if avg_landing_cost and float(avg_landing_cost) > 0:
+                unit_cogs = float(avg_landing_cost)
+            elif last_cost and float(last_cost) > 0:
+                unit_cogs = float(last_cost)
+            elif vendor_discount and float(vendor_discount) > 0:
+                unit_cogs = float(price) * (1.0 - (float(vendor_discount) / 100.0))
+            
             total_cogs = float(qty) * unit_cogs
 
             # 4. Record sale — both steps commit together
@@ -2088,7 +2177,8 @@ class DatabaseManager:
                     COALESCE(i.payment_upi,  0.0) as payment_upi,
                     COALESCE(i.payment_due,  0.0) as payment_due,
                     COALESCE(i.payment_mode, 'CASH') as payment_mode,
-                    (SELECT COALESCE(SUM(refund_amount), 0) FROM returns r WHERE r.invoice_id = i.invoice_id) as total_refund
+                    (SELECT COALESCE(SUM(refund_amount), 0) FROM returns r WHERE r.invoice_id = i.invoice_id) as total_refund,
+                    i.mobile, i.vehicle_model, i.reg_no, i.customer_gstin
                 FROM invoices i
             """
 
@@ -2524,6 +2614,24 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    def get_cogs_for_invoices(self, invoice_ids):
+        """Fetch summed COGS only for specific invoice IDs."""
+        if not invoice_ids:
+            return 0.0
+        conn = self.get_connection()
+        try:
+            placeholders = ','.join('?' for _ in invoice_ids)
+            sql = f"SELECT SUM(cogs) FROM sales WHERE invoice_id IN ({placeholders})"
+            cursor = conn.cursor()
+            cursor.execute(sql, invoice_ids)
+            c = cursor.fetchone()[0]
+            return float(c) if c else 0.0
+        except Exception as e:
+            app_logger.error(f"Error getting COGS for invoices: {e}")
+            return 0.0
+        finally:
+            conn.close()
+
     def get_customer_history(self, search_term):
         """Look up the most recent invoice matching mobile, reg_no, GSTIN, or customer name."""
         if not search_term:
@@ -2658,7 +2766,43 @@ class DatabaseManager:
         finally:
             conn.close()
 
+    # ── OPTIMIZATION 2: Annual Activity Log Cleanup ─────────────────────────
+    def cleanup_old_activity_logs(self, keep_days=365):
+        """
+        Deletes activity_log entries older than `keep_days` days.
+        Run once on startup. Keeps the DB lean over multi-year usage.
+        Default: keeps 1 full year (365 days) of logs.
+        Returns: number of rows deleted.
+        """
+        deleted = 0
+        try:
+            # Step 1: Delete old rows (own connection — opened and closed cleanly)
+            conn = self.get_connection()
+            try:
+                cursor = conn.cursor()
+                cutoff = (datetime.now() - __import__('datetime').timedelta(days=keep_days)).strftime("%Y-%m-%d %H:%M:%S")
+                cursor.execute("DELETE FROM activity_logs WHERE timestamp < ?", (cutoff,))
+                deleted = cursor.rowcount
+                conn.commit()
+            finally:
+                conn.close()
+
+            # Step 2: WAL checkpoint in a separate connection (avoids write-lock conflict)
+            if deleted > 0:
+                try:
+                    conn2 = self.get_connection()
+                    conn2.execute("PRAGMA wal_checkpoint(PASSIVE)")
+                    conn2.close()
+                except Exception:
+                    pass  # Checkpoint is best-effort only — not critical
+                app_logger.info(f"Activity log cleanup: removed {deleted} entries older than {keep_days} days.")
+            return deleted
+        except Exception as e:
+            app_logger.error(f"Activity log cleanup error: {e}")
+            return 0
+
     # --- Analytics Methods for Sales Dashboard ---
+
     def get_sales_by_date_range(self, date_from, date_to):
         """Get daily net sales data for charting (gross minus refunds)"""
         conn = self.get_connection()
@@ -2734,6 +2878,55 @@ class DatabaseManager:
             return rows
         except Exception as e:
             app_logger.error(f"Error getting top customers: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ── Custom Features: Low Stock & Customer Ledger ─────────────────
+    def get_low_stock_parts(self):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT part_id, part_name, qty, reorder_level, vendor, rack
+                FROM parts
+                WHERE qty <= reorder_level AND reorder_level > 0
+                ORDER BY qty ASC
+            """)
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting low stock parts: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_all_customer_names(self):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT DISTINCT customer_name FROM invoices WHERE customer_name IS NOT NULL AND customer_name != '' ORDER BY customer_name COLLATE NOCASE")
+            rows = cursor.fetchall()
+            return [r[0] for r in rows]
+        except Exception as e:
+            app_logger.error(f"Error getting customer names: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_customer_ledger(self, customer_name):
+        """Returns ALL invoices & dues for a specific customer."""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("""
+                SELECT invoice_id, date, total_amount, (COALESCE(payment_cash,0) + COALESCE(payment_upi,0)) as paid, payment_due
+                FROM invoices 
+                WHERE customer_name = ?
+                ORDER BY date DESC
+            """, (customer_name,))
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting customer ledger: {e}")
             return []
         finally:
             conn.close()
@@ -2874,7 +3067,9 @@ class DatabaseManager:
                     po.order_date, 
                     po.status,
                     COUNT(pi.id) as item_count,
-                    SUM(pi.qty_ordered) as total_qty
+                    SUM(pi.qty_ordered) as total_qty,
+                    po.due_amount,
+                    po.payment_status
                 FROM purchase_orders po
                 LEFT JOIN po_items pi ON po.po_id = pi.po_id
             """
@@ -3119,9 +3314,9 @@ class DatabaseManager:
                     order_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
                     cursor.execute(
-                        "INSERT INTO purchase_orders (po_id, supplier_name, order_date, status, total_amount, global_disc_percent) "
-                        "VALUES (?, ?, ?, ?, ?, ?)",
-                        (po_id, supplier_name, order_date, "OPEN", total_amount, global_disc_percent)
+                        "INSERT INTO purchase_orders (po_id, supplier_name, order_date, status, total_amount, global_disc_percent, due_amount, payment_status, paid_amount) "
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                        (po_id, supplier_name, order_date, "OPEN", total_amount, global_disc_percent, total_amount, "UNPAID", 0.0)
                     )
                     
                     for item in items:
@@ -3479,3 +3674,112 @@ class DatabaseManager:
         except Exception as e:
             app_logger.error(f"Error fetching inventory stats: {e}")
             return None
+
+    def log_payment(self, invoice_id, amount, payment_mode, payment_date=None):
+        if not payment_date:
+            from datetime import datetime
+            payment_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self.get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO payment_history (invoice_id, amount, payment_mode, payment_date) VALUES (?, ?, ?, ?)",
+                (invoice_id, amount, payment_mode, payment_date)
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Error logging payment for {invoice_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def clear_payment_history(self, invoice_id):
+        """Delete all payment_history rows for an invoice. Used before re-logging on edit."""
+        conn = self.get_connection()
+        try:
+            conn.execute("DELETE FROM payment_history WHERE invoice_id = ?", (invoice_id,))
+            conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Error clearing payment history for {invoice_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_payment_history(self, invoice_id):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT payment_date, amount, payment_mode FROM payment_history WHERE invoice_id = ? ORDER BY payment_date ASC", (invoice_id,))
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting payment history for {invoice_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    # ── PO Financial Ledger Methods ───────────────────────────────────────────
+    def log_po_payment(self, po_id, vendor_name, amount, payment_mode, payment_date=None):
+        if not payment_date:
+            from datetime import datetime
+            payment_date = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        conn = self.get_connection()
+        try:
+            conn.execute(
+                "INSERT INTO po_payment_history (po_id, vendor_name, amount, payment_mode, payment_date) VALUES (?, ?, ?, ?, ?)",
+                (po_id, vendor_name, amount, payment_mode, payment_date)
+            )
+            conn.commit()
+            return True
+        except Exception as e:
+            app_logger.error(f"Error logging PO payment for {po_id}: {e}")
+            return False
+        finally:
+            conn.close()
+
+    def get_vendor_ledger(self, vendor_name):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT payment_date, po_id, amount, payment_mode FROM po_payment_history "
+                "WHERE vendor_name = ? ORDER BY payment_date ASC", 
+                (vendor_name,)
+            )
+            return cursor.fetchall()  # list of rows
+        except Exception as e:
+            app_logger.error(f"Error getting vendor ledger for {vendor_name}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def get_po_payment_history(self, po_id):
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT payment_date, amount, payment_mode FROM po_payment_history "
+                "WHERE po_id = ? ORDER BY payment_date ASC", 
+                (po_id,)
+            )
+            return cursor.fetchall()
+        except Exception as e:
+            app_logger.error(f"Error getting PO payment history for {po_id}: {e}")
+            return []
+        finally:
+            conn.close()
+
+    def update_po_financials(self, po_id, paid_amount, due_amount, payment_status):
+        conn = self.get_connection()
+        try:
+            conn.execute(
+                "UPDATE purchase_orders SET paid_amount = ?, due_amount = ?, payment_status = ? WHERE po_id = ?",
+                (paid_amount, due_amount, payment_status, po_id)
+            )
+            conn.commit()
+            return True, "Success"
+        except Exception as e:
+            app_logger.error(f"Error updating PO financials for {po_id}: {e}")
+            return False, str(e)
+        finally:
+            conn.close()

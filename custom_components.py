@@ -1534,6 +1534,10 @@ class ProTableDelegate(QStyledItemDelegate):
                  elif col_type == 'price':
                      align = Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight
                  
+                 align_val = index.data(Qt.ItemDataRole.TextAlignmentRole)
+                 if align_val is not None:
+                     align = Qt.AlignmentFlag(align_val)
+                 
                  draw_rect = QRect(rect)
                  if col_type in ['name', 'vendor', 'description']: 
                      draw_rect.adjust(5, 0, 0, 0)

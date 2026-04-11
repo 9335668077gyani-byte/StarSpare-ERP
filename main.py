@@ -124,6 +124,13 @@ class StartupLoader(QThread):
             db_manager = DatabaseManager(db_path)
             self.progress.emit(30, "DATABASE CONNECTED.")
             
+            # ── Optimization 2: Silent annual log cleanup on every startup ──
+            # Removes activity_log rows older than 1 year to keep DB lean.
+            try:
+                db_manager.cleanup_old_activity_logs(keep_days=365)
+            except Exception as _cleanup_err:
+                app_logger.warning(f"Startup log cleanup skipped: {_cleanup_err}")
+            
             # 2. Heavy Modules & Logic
             self.progress.emit(40, "LOADING SECURITY MODULE...")
             from license_manager import LicenseVerifier  # type: ignore

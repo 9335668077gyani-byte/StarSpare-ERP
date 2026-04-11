@@ -293,13 +293,20 @@ class PartTrackerDialog(QDialog):
             v = str(value or "").strip()
             return v if v and v not in ("None", "") else fallback
 
+        vendor_name = gv(rd[8])
+        discount_str = ""
+        if vendor_name != "N/A":
+            v_det = self.db.get_vendor_details(vendor_name)
+            if v_det and len(v_det) > 7 and float(v_det[7]) > 0:
+                discount_str = f"  [🏷️ Universal Discount: {v_det[7]}%]"
+
         fields = [
             ("Part ID",        gv(rd[0])),
             ("Part Name",      gv(rd[1])),
             ("Description",    gv(rd[2])),
             ("Category",       gv(rd[10])),
             ("Compatibility",  gv(rd[9])),
-            ("Vendor",         gv(rd[8])),
+            ("Vendor",         vendor_name + discount_str),
             ("Location",       f"Rack {gv(rd[5])}, Col {gv(rd[6])}"),
             ("HSN Code",       gv(rd[15] if len(rd)>15 else "")),
             ("GST Rate",       f"{gv(rd[16] if len(rd)>16 else '')}%" if rd[16] else "N/A"),

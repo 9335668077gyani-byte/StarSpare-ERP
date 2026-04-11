@@ -39,3 +39,21 @@ gst_test_output.txt
 # Reports & Exports
 reports/
 *.pdf
+
+# Security & Secrets
+private.pem
+*.lic
+public_key.py
+
+# User & Local Environment Data
+datas/avatars/
+data/network_config.json
+parts_inventory.csv
+
+# Temporary Scratchpads & Scripts
+_trash_bin/
+output.txt
+tmp_*
+test_*
+_check_*
+chk_qr.py
