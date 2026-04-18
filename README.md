@@ -145,12 +145,7 @@ Multi-PC support — if you have 2 billing counters, both can use the same datab
 All data stays on your computer — no cloud subscription, no monthly fee, no internet dependency.
 Result: Even if your computer dies tomorrow — your customer records, stock list, and invoices are safe.
 
-🗂️ 11. TVS OEM PARTS CATALOG — Built-In
-What it does for you:
-
-Complete database of TVS genuine spare parts — synced directly from TVS dealer systems.
-Search any vehicle model → see all available spare parts with part codes and prices.
-Find the right part number for any TVS motorcycle or scooter.
+🗂️ 11
 Import directly from catalog to your live stock list — no manual typing.
 Result: No more calling the distributor just to get a part number. Everything is in the software.
 
@@ -180,7 +175,8 @@ Add your parts list (or import from Excel)
 Start billing — it's that simple
 No internet required. No monthly subscription. One-time purchase. Lifetime use.
 
-📞 CONTACT US
+📞 CONTACT US-09807418534
+📨 9335668077gyani@gmail.com
 For demo, pricing, or any questions — contact us today.
 
 SpareParts Pro v2.5 — Aapki Dukaan, Digital Ho Jaaye 🚀
